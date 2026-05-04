@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Tic-Tac-Toe</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Additional custom styles for voice game page */
+        .nav-header {
+            background: linear-gradient(145deg, #8b4513, #6d360f);
+            padding: 15px 30px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 8px 0 rgba(139, 69, 19, 0.3);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        
+        .nav-header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .nav-header h1 {
+            color: #f8f0e6;
+            font-size: 1.8em;
+            margin: 0;
+            text-shadow: 2px 2px 0px rgba(0,0,0,0.3);
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .nav-links a {
+            color: #f8f0e6;
+            text-decoration: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.1);
+            transition: all 0.2s ease;
+            font-weight: bold;
+        }
+        
+        .nav-links a:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }
+        
+        .nav-links a.active {
+            background: rgba(255,255,255,0.25);
+            box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+        }
+        
+        /* Server Status Indicators */
+        .server-status {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.15);
+            font-size: 0.75em;
+            font-weight: bold;
+            color: #f8f0e6;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: default;
+            white-space: nowrap;
+            transition: background 0.2s ease;
+        }
+        
+        .status-badge:hover {
+            background: rgba(255,255,255,0.18);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        
+        .status-dot.status-up {
+            background: #5fb3a9;
+            box-shadow: 0 0 6px rgba(95, 179, 169, 0.6);
+        }
+        
+        .status-dot.status-down {
+            background: #d45a5a;
+            box-shadow: 0 0 6px rgba(212, 90, 90, 0.4);
+        }
+        
+        .status-dot.status-checking {
+            background: #d4a54a;
+            animation: statusPulse 1.2s ease-in-out infinite;
+        }
+        
+        @keyframes statusPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.8); }
+        }
+        
+        .status-label {
+            line-height: 1;
+        }
+        
+        .game-layout {
+            display: flex;
+            gap: 25px;
+            flex-wrap: wrap;
+        }
+        
+        .game-section {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .voice-section {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .voice-panel {
+            background: linear-gradient(145deg, #f8f5f0, #e8e0d0);
+            border: 4px solid #8b4513;
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 
+                0 8px 0 rgba(139, 69, 19, 0.2),
+                inset 0 2px 8px rgba(212, 165, 116, 0.3);
+        }
+        
+        .panel-title {
+            color: #5d4037;
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: bold;
+        }
+        
+        .quick-commands {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .quick-commands button {
+            padding: 10px 18px;
+            background: linear-gradient(145deg, #d4804a, #b86030);
+            color: #fff8f0;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 0 rgba(184, 96, 48, 0.4);
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 1px;
+        }
+        
+        .quick-commands button:hover {
+            background: linear-gradient(145deg, #e4905a, #c87038);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 rgba(184, 96, 48, 0.4);
+        }
+        
+        .quick-commands button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 rgba(184, 96, 48, 0.4);
+        }
+        
+        .position-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 15px;
+            justify-items: center;
+        }
+        
+        .position-buttons button {
+            padding: 10px 15px;
+            background: linear-gradient(145deg, #5fb3a9, #3d8b85);
+            color: #fff8f0;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 0 rgba(61, 139, 133, 0.4);
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.8em;
+            letter-spacing: 0.5px;
+        }
+        
+        .position-buttons button:hover {
+            background: linear-gradient(145deg, #6fc3b9, #4d9b95);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 rgba(61, 139, 133, 0.4);
+        }
+        
+        .position-buttons button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 rgba(61, 139, 133, 0.4);
+        }
+        
+        .command-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        #voice-input {
+            flex: 1;
+            padding: 12px;
+            font-size: 1em;
+            border: 3px solid #8b4513;
+            border-radius: 10px;
+            background: #fff8f0;
+            color: #5d4037;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        #voice-input:focus {
+            outline: none;
+            border-color: #d46a4a;
+            box-shadow: 0 0 0 3px rgba(212, 106, 74, 0.2);
+        }
+        
+        #mic-btn, #send-cmd-btn {
+            padding: 12px 20px;
+            background: linear-gradient(145deg, #5fb3a9, #3d8b85);
+            color: #fff8f0;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 0 rgba(61, 139, 133, 0.4);
+            font-weight: bold;
+        }
+        
+        #mic-btn:hover, #send-cmd-btn:hover {
+            background: linear-gradient(145deg, #6fc3b9, #4d9b95);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 rgba(61, 139, 133, 0.4);
+        }
+        
+        #mic-btn:active, #send-cmd-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 rgba(61, 139, 133, 0.4);
+        }
+        
+        .voice-messages {
+            height: 200px;
+            overflow-y: auto;
+            background: #fff8f0;
+            border: 3px solid #8b4513;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 0.95em;
+            box-shadow: inset 0 2px 8px rgba(139, 69, 19, 0.1);
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        .voice-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .voice-messages::-webkit-scrollbar-track {
+            background: #e8dcc4;
+            border-radius: 4px;
+        }
+        
+        .voice-messages::-webkit-scrollbar-thumb {
+            background: #d4a574;
+            border-radius: 4px;
+        }
+        
+        .message {
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        .message.user {
+            background: linear-gradient(145deg, #e8f5e8, #d4e8d4);
+            border-left: 4px solid #5fb3a9;
+        }
+        
+        .message.bot {
+            background: linear-gradient(145deg, #e8f0f8, #d4e0e8);
+            border-left: 4px solid #5fb3b9;
+        }
+        
+        @media (max-width: 768px) {
+            .game-layout {
+                flex-direction: column;
+            }
+            
+            .nav-header {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .nav-header-left {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .server-status {
+                justify-content: center;
+            }
+            
+            .status-badge {
+                font-size: 0.65em;
+                padding: 3px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+       <div class="nav-header">
+            <div class="nav-header-left">
+                <h1>🎤 Voice Tic-Tac-Toe</h1>
+                <div class="server-status">
+                    <div id="backend-status" class="status-badge" title="Backend: checking | Last checked: never">
+                        <span id="backend-status-dot" class="status-dot status-checking"></span>
+                        <span class="status-label">Checking...</span>
+                    </div>
+                    <div id="slm-status" class="status-badge" title="SLM: checking | Last checked: never">
+                        <span id="slm-status-dot" class="status-dot status-checking"></span>
+                        <span class="status-label">Checking...</span>
+                    </div>
+                    <div id="asr-status" class="status-badge" title="ASR: checking | Last checked: never">
+                        <span id="asr-status-dot" class="status-dot status-checking"></span>
+                        <span class="status-label">Checking...</span>
+                    </div>
+                    <div id="tts-status" class="status-badge" title="TTS: checking | Last checked: never">
+                        <span id="tts-status-dot" class="status-dot status-checking"></span>
+                        <span class="status-label">Checking...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="nav-links">
+                <a href="/regular_game.html">Regular Game</a>
+            </div>
+        </div>
+        
+        <div class="game-layout">
+            <!-- Game Section -->
+            <div class="game-section">
+                <div class="status" id="status">
+                    Loading game...
+                </div>
+                
+                <div class="game-board" id="game-board">
+                    <!-- Cells will be generated by JavaScript -->
+                </div>
+                
+                <button id="new-game-btn" class="new-game-btn">New Game</button>
+            </div>
+            
+            <!-- Voice Control Section -->
+            <div class="voice-section">
+                <div class="voice-panel">
+                    <div class="panel-title">🎙️ Voice Control</div>
+                    
+                    <div class="quick-commands">
+                        <button data-cmd="start_game">▶️ Start Game</button>
+                        <button data-cmd="show_board">📋 Show Board</button>
+                        <button data-cmd="check_status">🔍 Check Status</button>
+                        <button data-cmd="quit">🚪 Quit</button>
+                    </div>
+                    
+                    <div class="tts-toggle" style="display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px;">
+                        <label style="font-size:0.85em;color:#5d4037;cursor:pointer;display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="tts-toggle" checked style="cursor:pointer;">
+                            🔊 Bot speaks responses
+                        </label>
+                    </div>
+                    
+                    <div class="position-buttons">
+                        <button data-row="0" data-col="0">Top-Left</button>
+                        <button data-row="0" data-col="1">Top-Center</button>
+                        <button data-row="0" data-col="2">Top-Right</button>
+                        <button data-row="1" data-col="0">Middle-Left</button>
+                        <button data-row="1" data-col="1">Center</button>
+                        <button data-row="1" data-col="2">Middle-Right</button>
+                        <button data-row="2" data-col="0">Bottom-Left</button>
+                        <button data-row="2" data-col="1">Bottom-Center</button>
+                        <button data-row="2" data-col="2">Bottom-Right</button>
+                    </div>
+                    
+                    <div class="command-input">
+                        <input type="text" id="voice-input" placeholder="Say 'start game' or 'place at center'...">
+                        <button id="mic-btn">🎤</button>
+                        <button id="send-cmd-btn">Send</button>
+                    </div>
+                    
+                    <div class="voice-messages" id="voice-messages">
+                        <div class="message bot">🤖 Welcome! Say "start game" to begin or use the quick commands above.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>
