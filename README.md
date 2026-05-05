@@ -28,6 +28,21 @@ Your voice is captured by the microphone, transcribed into text by the **Qwen3-A
 - **🔊 TTS Playback** — Bot responses spoken aloud via Kokoro-82M ONNX TTS; toggle on/off in browser UI
 - **📱 Position Buttons** — Click-to-move grid for non-voice players
 
+## Screenshots
+
+### Voice Game Mode
+
+The voice game page features a split layout with the game board on the left and voice controls on the right — including quick command buttons, position buttons, and a conversation chat.
+
+![Voice Game Landing](assets/01-voice-game-landing.png)
+*The voice game landing page — empty board, live status badges for backend/SLM/ASR/TTS, and quick command buttons ready for play.*
+
+![Voice Game In Progress](assets/02-voice-game-in-progress.png)
+*Mid-game state — a natural language command processed by the SLM, the bot's response in the chat, and the board updated with both players' moves.*
+
+![Voice Game Win](assets/03-voice-game-win.png)
+*Game over — X wins with a diagonal line highlighted in gold, chat history showing the full command-and-response flow from start to finish.*
+
 ### Finetuned Model Details
 
 The SLM is **Gemma-4-E4B**, fine-tuned specifically for this game using a custom dataset of **~1,000 samples** (817 training + 204 evaluation). The training data covers all 8 backend function calls (`start_game`, `get_board`, `place_move`, `get_status`, `greeting`, `goodbye`, `thank_you`, `intent_unclear`) with realistic voice-style input including filler words, self-corrections, and ASR artifacts for robustness. Both the model and training dataset are open-sourced on HuggingFace:
@@ -48,7 +63,7 @@ Microphone → ASR (Qwen3-ASR) → SLM (Gemma-4) → Orchestrator → Game API �
 **2. Browser Voice Mode**
 ```
 Microphone / Typing → /api/voice/command → SLM (Gemma-4) → Orchestrator → Game API
-                                                ↓
+                                                 ↓
                               Frontend: GET /api/game (re-render) + POST /api/voice/synthesize (optional TTS)
 ```
 Both modes share the same game backend and can coexist in the same session. The browser mode TTS is toggleable via a checkbox in the UI.
