@@ -59,15 +59,15 @@ class MovePosition(str, Enum):
     @property
     def aliases(self) -> tuple[str, ...]:
         return {
-            MovePosition.TOP_LEFT: ("upper left", "northwest", "cell 1", "position 1"),
-            MovePosition.TOP_CENTER: ("top middle", "upper center", "cell 2", "position 2"),
-            MovePosition.TOP_RIGHT: ("upper right", "northeast", "cell 3", "position 3"),
-            MovePosition.MIDDLE_LEFT: ("middle left", "center left", "cell 4", "position 4"),
-            MovePosition.CENTER: ("middle", "exact center", "cell 5", "position 5"),
-            MovePosition.MIDDLE_RIGHT: ("middle right", "center right", "cell 6", "position 6"),
-            MovePosition.BOTTOM_LEFT: ("lower left", "southwest", "cell 7", "position 7"),
-            MovePosition.BOTTOM_CENTER: ("bottom middle", "lower center", "cell 8", "position 8"),
-            MovePosition.BOTTOM_RIGHT: ("lower right", "southeast", "cell 9", "position 9"),
+            MovePosition.TOP_LEFT: ("upper left", "northwest", "row one column one", "cell 1", "position 1"),
+            MovePosition.TOP_CENTER: ("top middle", "upper center", "row one column two", "cell 2", "position 2"),
+            MovePosition.TOP_RIGHT: ("upper right", "northeast", "row one column three", "cell 3", "position 3"),
+            MovePosition.MIDDLE_LEFT: ("middle left", "center left", "row two column one", "cell 4", "position 4"),
+            MovePosition.CENTER: ("middle", "exact center", "row two column two", "cell 5", "position 5"),
+            MovePosition.MIDDLE_RIGHT: ("middle right", "center right", "row two column three", "cell 6", "position 6"),
+            MovePosition.BOTTOM_LEFT: ("lower left", "southwest", "row three column one", "cell 7", "position 7"),
+            MovePosition.BOTTOM_CENTER: ("bottom middle", "lower center", "row three column two", "cell 8", "position 8"),
+            MovePosition.BOTTOM_RIGHT: ("lower right", "southeast", "row three column three", "cell 9", "position 9"),
         }[self]
 
 

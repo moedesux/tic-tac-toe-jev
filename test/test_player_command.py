@@ -65,6 +65,25 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.clarification_required)
         self.assertEqual((await session.read()).board, before.board)
 
+    async def test_uncertain_position_clarifies_without_mutation(self) -> None:
+        session = GameSession()
+        await session.create()
+        before = await session.read()
+        result = await PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE,
+                    confidence=0.95,
+                    position=None,
+                    position_confidence=0.0,
+                )
+            ),
+            session,
+        ).process("play somewhere in the middle", before)
+
+        self.assertTrue(result.clarification_required)
+        self.assertEqual((await session.read()).board, before.board)
+
     async def test_occupied_move_is_rejected_by_game_rules(self) -> None:
         session = GameSession()
         await session.create()

@@ -88,7 +88,7 @@ class JevCommandInterpreter:
         has_position = (
             position_answer is not None
             and (presence_answer is None or getattr(presence_answer, "noul", 1.0) >= 0.5)
-            and (uniqueness_answer is None or getattr(uniqueness_answer, "noul", 1.0) >= 0.5)
+            and (uniqueness_answer is None or getattr(uniqueness_answer, "noul", 1.0) > 0.5)
         )
         return CommandInterpretation(
             intent=CommandIntent(answer.choice),
