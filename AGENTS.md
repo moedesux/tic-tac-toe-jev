@@ -26,7 +26,8 @@ For the complete architecture diagram with all components, connections, and conf
 
 | Component           | Location                      | Port/Role                                                                                           |
 | ------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Backend API**       | `backend/main.py`               | FastAPI on 8002 — serves frontend + `/api/game`, `/api/game/move`, `/api/voice/command`, `/api/voice/synthesize`, `/api/config/templates`, `/api/health/gpu` |
+| **Backend API**       | `backend/main.py`               | FastAPI on 8002 — serves frontend and delegates `/api/game` and `/api/game/move` to the shared session; also serves `/api/voice/command`, `/api/voice/synthesize`, `/api/config/templates`, `/api/health/gpu` |
+| **Game Session**      | `backend/game_session.py`       | Reusable asynchronous in-process boundary owning the active game state and its single `asyncio.Lock`; exposes create, read, and move operations |
 | **Game Logic**        | `backend/game.py`               | Pure game logic: `check_winner()`, `get_winning_line()` (returns winning cell combo), `validate_move()`, `apply_move()` |
 | **API Models**        | `backend/models.py`             | Pydantic models with `GameResponse.status` pattern validation (`^(ongoing|completed|draw)$`)            |
 | **SLM Server**        | llama.cpp server              | Port 8080 (moe249/google_gemma-4-E4B-it-tictactoe model)                                                                      |
@@ -271,7 +272,8 @@ Open `http://localhost:8002/` in Chrome/Edge:
 
 | File                       | Owner             | Purpose                                                                                               |
 | -------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------- |
-| `backend/main.py`            | FastAPI game API  | `/api/game`, `/api/game/move`, `/api/voice/command`, `/api/voice/synthesize`, `/api/config/templates`, `/api/health/gpu` endpoints. Lazy TTS/ASR singletons. Distinguishes wins (`"X"/"O"`) from draws (`"draw"`). Thread-safe with `asyncio.Lock()`. |
+| `backend/main.py`            | FastAPI game API  | `/api/game`, `/api/game/move`, `/api/voice/command`, `/api/voice/synthesize`, `/api/config/templates`, `/api/health/gpu` endpoints. Owns the game-session singleton/accessor and lazy TTS/ASR singletons; game routes delegate to the session. |
+| `backend/game_session.py`    | Game session      | Reusable asynchronous in-process boundary that owns the active game state and single `asyncio.Lock`; serializes create, read, move, and ensure-created operations. |
 | `backend/game.py`            | Game logic        | Pure game logic: `check_winner()`, `get_winning_line()` (returns winning cell combo), `validate_move()`, `apply_move()` |
 | `backend/models.py`          | API models        | Pydantic models with `GameResponse.status` pattern validation (`^(ongoing|completed|draw)$`)            |
 | `voice_game_orchestrator.py` | Orchestrator      | SLMClient (JSON parsing, tool calling) + TextOrchestrator (conversation management, function routing). Thread-safe lazy init with `threading.Lock()`. Cached tool definitions. |
@@ -315,12 +317,13 @@ Open `http://localhost:8002/` in Chrome/Edge:
 ## Architecture Notes
 
 ### Shared State
-- Backend stores `current_game` as global
+- `backend/game_session.py` owns the authoritative active game state and single asynchronous session boundary
+- `backend/main.py` owns the session singleton and accessor; REST handlers and voice setup use that boundary
 - Both frontend (regular + voice) and voice game use same session
 - State persists across frontend refreshes and voice sessions
 
 ### Thread Safety
-- `asyncio.Lock()` (`game_lock`) protects all reads/writes to `current_game` in `backend/main.py` — serializes `create_game`, `get_game`, `make_move`, and `voice_command` endpoints
+- `GameSession`'s single `asyncio.Lock()` serializes all shared game-state reads and mutations, including REST operations and voice setup
 - `threading.Lock()` (`_orchestrator_lock`) protects lazy initialization of the SLM orchestrator singleton via double-checked locking in `_get_orchestrator()`
 - All `requests` calls in `voice_game_interface.py` use `timeout=10` with `Timeout`/`RequestException` handling to prevent indefinite hangs
 
