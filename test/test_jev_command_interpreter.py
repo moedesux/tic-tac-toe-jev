@@ -13,10 +13,12 @@ class RecordingTypeSafeClient:
         self,
         uniqueness: float = 0.1,
         pending_judgments: dict[str, float] | None = None,
+        initial_move_requested_confidence: float = 0.0,
     ) -> None:
         self.calls: list[dict] = []
         self.uniqueness = uniqueness
         self.pending_judgments = pending_judgments or {}
+        self.initial_move_requested_confidence = initial_move_requested_confidence
 
     async def system_one(self, *, state: dict, questions: dict):
         self.calls.append({"state": state, "questions": questions})
@@ -26,6 +28,9 @@ class RecordingTypeSafeClient:
                 "position": SimpleNamespace(choice="center", confidence=0.93),
                 "position_present": SimpleNamespace(noul=0.1),
                 "position_unique": SimpleNamespace(noul=self.uniqueness),
+                "initial_move_requested": SimpleNamespace(
+                    noul=self.initial_move_requested_confidence
+                ),
                 **{
                     name: SimpleNamespace(noul=confidence)
                     for name, confidence in self.pending_judgments.items()
@@ -81,6 +86,15 @@ class JevCommandInterpreterTests(unittest.IsolatedAsyncioTestCase):
         criteria = client.calls[0]["questions"]["position"].criteria
         self.assertIn("row two column three", criteria[MovePosition.MIDDLE_RIGHT.value])
         self.assertIn("cell 6", criteria[MovePosition.MIDDLE_RIGHT.value])
+
+    async def test_start_move_judgment_is_batched_as_an_independent_choice(self) -> None:
+        client = RecordingTypeSafeClient(initial_move_requested_confidence=0.91)
+        interpretation = await JevCommandInterpreter(client).interpret(
+            "start and play the center", game_state=None
+        )
+
+        self.assertTrue(interpretation.initial_move_requested)
+        self.assertIn("initial_move_requested", client.calls[0]["questions"])
 
     async def test_pending_request_batches_cancellation_affirmation_and_rejection(self) -> None:
         client = RecordingTypeSafeClient(

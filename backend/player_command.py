@@ -44,6 +44,7 @@ class PlayerCommandProcessor:
     """Process one command and own its explicit pending-command transitions."""
 
     START_CONFIDENCE = 0.80
+    RESET_START_CONFIDENCE = 0.90
     BASELINE_CONFIDENCE = 0.60
     MOVE_CONFIDENCE = 0.80
     POSITION_CONFIDENCE = 0.80
@@ -127,6 +128,17 @@ class PlayerCommandProcessor:
                     clarification=True,
                     pending=pending,
                 )
+            # Starting without a game is a low-risk creation transition. A
+            # restart replaces the player's active board, so it needs a
+            # stricter state-changing judgment before mutating session state.
+            if game_state is not None and confidence < self.RESET_START_CONFIDENCE:
+                return self._result(
+                    intent,
+                    confidence,
+                    "Would you like to start a new game?",
+                    clarification=True,
+                    pending=pending,
+                )
             self._game_session.create_locked()
             if interpretation.initial_move_requested:
                 return self._handle_move_request(
@@ -203,9 +215,19 @@ class PlayerCommandProcessor:
                 pending=pending,
             )
 
-        return self._execute_move(position, interpretation.confidence)
+        return self._execute_move(
+            position,
+            interpretation.confidence,
+            result_intent=intent,
+        )
 
-    def _execute_move(self, position: MovePosition, confidence: float) -> CommandResult:
+    def _execute_move(
+        self,
+        position: MovePosition,
+        confidence: float,
+        *,
+        result_intent: CommandIntent = CommandIntent.PLACE_MOVE,
+    ) -> CommandResult:
         # A confident gameplay command replaces stale pending state even when
         # game rules reject its proposed cell.
         self._game_session.set_pending(None)
@@ -213,14 +235,14 @@ class PlayerCommandProcessor:
             self._game_session.move_locked(position.cell_index)
         except (NoGameError, InvalidMoveError) as error:
             return self._result(
-                CommandIntent.PLACE_MOVE,
+                result_intent,
                 confidence,
                 str(error),
                 position=position,
                 pending=None,
             )
         return self._result(
-            CommandIntent.PLACE_MOVE,
+            result_intent,
             confidence,
             f"You placed your mark at {position.value.replace('_', ' ')}.",
             position=position,

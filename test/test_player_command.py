@@ -159,6 +159,135 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(interpreter.calls[0].control, "Let's start a new game")
         self.assertIsNone(interpreter.calls[0].game_state)
 
+    async def test_start_with_precise_initial_move_is_one_atomic_start_transition(self) -> None:
+        session = GameSession()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(
+                    CommandIntent.START_GAME,
+                    0.96,
+                    position=MovePosition.CENTER,
+                    position_confidence=0.97,
+                    initial_move_requested=True,
+                )
+            ),
+            session,
+        )
+
+        result = await processor.process("start and play center")
+
+        self.assertEqual(result.intent, CommandIntent.START_GAME)
+        self.assertEqual(result.position, MovePosition.CENTER)
+        self.assertFalse(result.clarification_required)
+        self.assertIn("center", result.message)
+        self.assertEqual((await session.read()).board[4], "X")
+        async with session.locked():
+            self.assertIsNone(session.pending)
+
+    async def test_start_with_missing_initial_position_starts_and_waits_for_position(self) -> None:
+        session = GameSession()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(
+                    CommandIntent.START_GAME,
+                    0.96,
+                    initial_move_requested=True,
+                )
+            ),
+            session,
+        )
+
+        result = await processor.process("start and make a move")
+
+        self.assertEqual(result.intent, CommandIntent.START_GAME)
+        self.assertTrue(result.clarification_required)
+        self.assertEqual(result.pending, PendingCommand(intent=CommandIntent.PLACE_MOVE))
+        self.assertEqual((await session.read()).board, [None] * 9)
+        async with session.locked():
+            self.assertEqual(
+                session.pending,
+                PendingCommand(intent=CommandIntent.PLACE_MOVE),
+            )
+
+    async def test_start_with_uncertain_initial_position_starts_without_moving(self) -> None:
+        session = GameSession()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(
+                    CommandIntent.START_GAME,
+                    0.96,
+                    position=MovePosition.CENTER,
+                    position_confidence=0.79,
+                    initial_move_requested=True,
+                )
+            ),
+            session,
+        )
+
+        result = await processor.process("start and maybe play the middle")
+
+        self.assertEqual(result.intent, CommandIntent.START_GAME)
+        self.assertTrue(result.clarification_required)
+        self.assertEqual(result.pending.position, MovePosition.CENTER)
+        self.assertEqual((await session.read()).board, [None] * 9)
+        async with session.locked():
+            self.assertEqual(session.pending, result.pending)
+
+    async def test_unsupported_compound_executes_only_the_selected_action(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(
+                    CommandIntent.SHOW_BOARD,
+                    0.96,
+                    position=MovePosition.CENTER,
+                    position_confidence=0.97,
+                    initial_move_requested=True,
+                )
+            ),
+            session,
+        )
+
+        result = await processor.process("show the board and play center")
+
+        self.assertEqual(result.intent, CommandIntent.SHOW_BOARD)
+        self.assertIsNone(result.position)
+        self.assertFalse(result.clarification_required)
+        self.assertEqual((await session.read()).board, [None] * 9)
+
+    async def test_existing_game_requires_stricter_confidence_to_reset_for_start(self) -> None:
+        session = GameSession()
+        original = await session.create()
+        await session.move(MovePosition.TOP_LEFT.cell_index)
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(CommandInterpretation(CommandIntent.START_GAME, 0.85)),
+            session,
+        )
+
+        result = await processor.process("start over")
+
+        self.assertTrue(result.clarification_required)
+        unchanged = await session.read()
+        self.assertEqual(unchanged.gameId, original.gameId)
+        self.assertEqual(unchanged.board[0], "X")
+
+    async def test_high_confidence_start_can_reset_existing_game(self) -> None:
+        session = GameSession()
+        original = await session.create()
+        await session.move(MovePosition.TOP_LEFT.cell_index)
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(CommandInterpretation(CommandIntent.START_GAME, 0.95)),
+            session,
+        )
+
+        result = await processor.process("start over")
+
+        self.assertFalse(result.clarification_required)
+        restarted = await session.read()
+        self.assertNotEqual(restarted.gameId, original.gameId)
+        self.assertEqual(restarted.board, [None] * 9)
+
     async def test_non_start_intents_never_create_a_game(self) -> None:
         expected_messages = {
             CommandIntent.GREETING: "Welcome to Tic-Tac-Toe! Say 'start' to begin a new game.",
