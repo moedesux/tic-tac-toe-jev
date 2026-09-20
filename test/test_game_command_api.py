@@ -6,12 +6,12 @@ import httpx
 
 from backend.game_session import GameSession, NoGameError
 from backend.main import app, get_command_processor, get_game_session
+from backend.models import CommandIntent
 from backend.player_command import (
-    CommandIntent,
     CommandInterpretation,
-    FakeCommandInterpreter,
     PlayerCommandProcessor,
 )
+from test.fakes import FakeCommandInterpreter
 
 
 class GameCommandApiTests(unittest.IsolatedAsyncioTestCase):

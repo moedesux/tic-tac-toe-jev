@@ -4,7 +4,8 @@ import unittest
 from types import SimpleNamespace
 
 from backend.jev_command_interpreter import JevCommandInterpreter
-from backend.player_command import CommandIntent, CommandInterpretation
+from backend.models import CommandIntent
+from backend.player_command import CommandInterpretation
 
 
 class RecordingTypeSafeClient:

@@ -3,12 +3,12 @@
 import unittest
 
 from backend.game_session import GameSession, NoGameError
+from backend.models import CommandIntent
 from backend.player_command import (
-    CommandIntent,
     CommandInterpretation,
-    FakeCommandInterpreter,
     PlayerCommandProcessor,
 )
+from test.fakes import FakeCommandInterpreter
 
 
 class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):

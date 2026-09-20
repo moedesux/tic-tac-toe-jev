@@ -5,12 +5,14 @@ This is the only module where TypeSafe SDK request and response types are used.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
-from typesafe_sdk import Choice
+from typesafe_sdk import AsyncTypeSafeClient, Choice
 
-from backend.models import GameResponse
-from backend.player_command import CommandIntent, CommandInterpretation
+from backend.models import CommandIntent, GameResponse
+from backend.player_command import CommandInterpretation
 
 INTENT_CRITERIA = {
     CommandIntent.GREETING.value: "The player greets the game or says hello.",
@@ -62,3 +64,10 @@ class JevCommandInterpreter:
             intent=CommandIntent(answer.choice),
             confidence=answer.confidence,
         )
+
+
+@asynccontextmanager
+async def open_jev_command_interpreter() -> AsyncIterator[JevCommandInterpreter]:
+    """Own one SDK client while exposing only the domain interpreter seam."""
+    async with AsyncTypeSafeClient() as client:
+        yield JevCommandInterpreter(client)

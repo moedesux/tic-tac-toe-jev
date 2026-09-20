@@ -38,10 +38,10 @@ from backend.game_session import (
     NoGameError,
 )
 from backend.models import (
-    GameCommandRequest,
-    GameCommandResponse,
+    CommandResult,
     GameResponse,
     MoveCreate,
+    PlayerCommandRequest,
 )
 from backend.player_command import PlayerCommandProcessor
 from config.config import get_backend_config, get_voice_config
@@ -101,22 +101,11 @@ def get_game_session() -> GameSession:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Own one asynchronous TypeSafe client for the application lifetime."""
-    from typesafe_sdk import AsyncTypeSafeClient, TypeSafeError
+    from backend.jev_command_interpreter import open_jev_command_interpreter
 
-    try:
-        client = AsyncTypeSafeClient()
-    except TypeSafeError as error:
-        logger.warning("TypeSafe command service is not configured: %s", error)
-        application.state.command_processor = None
-        yield
-        return
-
-    from backend.jev_command_interpreter import JevCommandInterpreter
-
-    async with client:
-        application.state.typesafe_client = client
+    async with open_jev_command_interpreter() as interpreter:
         application.state.command_processor = PlayerCommandProcessor(
-            JevCommandInterpreter(client),
+            interpreter,
             get_game_session(),
         )
         yield
@@ -290,9 +279,9 @@ async def make_move(move: MoveCreate):
         raise HTTPException(status_code=400, detail=error.detail) from error
 
 
-@app.post("/api/game/command", response_model=GameCommandResponse)
+@app.post("/api/game/command", response_model=CommandResult)
 async def process_game_command(
-    request: GameCommandRequest,
+    request: PlayerCommandRequest,
     processor: Annotated[PlayerCommandProcessor, Depends(get_command_processor)],
     session: Annotated[GameSession, Depends(get_game_session)],
 ):

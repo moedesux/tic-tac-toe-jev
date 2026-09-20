@@ -3,23 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 from typing import Protocol
 
 from backend.game_session import GameSession
-from backend.models import GameResponse
-
-
-class CommandIntent(str, Enum):
-    """Meanings supported by the first Player Command slice."""
-
-    GREETING = "greeting"
-    START_GAME = "start_game"
-    SHOW_BOARD = "show_board"
-    SHOW_STATUS = "show_status"
-    THANKS = "thanks"
-    GOODBYE = "goodbye"
-    UNCLEAR = "unclear"
+from backend.models import CommandIntent, CommandResult, GameResponse
 
 
 @dataclass(frozen=True)
@@ -38,46 +25,6 @@ class CommandInterpreter(Protocol):
         control: str,
         game_state: GameResponse | None,
     ) -> CommandInterpretation: ...
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    """Observable outcome returned to command clients."""
-
-    success: bool
-    message: str
-    intent: CommandIntent
-    confidence: float
-    clarification_required: bool
-    position: str | None = None
-
-
-@dataclass(frozen=True)
-class InterpreterCall:
-    """One call recorded by the deterministic fake interpreter."""
-
-    control: str
-    game_state: GameResponse | None
-
-
-class FakeCommandInterpreter:
-    """Deterministic interpreter for command-module and HTTP tests."""
-
-    def __init__(self, interpretation: CommandInterpretation) -> None:
-        self._interpretation = interpretation
-        self.calls: list[InterpreterCall] = []
-
-    @property
-    def call_count(self) -> int:
-        return len(self.calls)
-
-    async def interpret(
-        self,
-        control: str,
-        game_state: GameResponse | None,
-    ) -> CommandInterpretation:
-        self.calls.append(InterpreterCall(control, game_state))
-        return self._interpretation
 
 
 class PlayerCommandProcessor:
