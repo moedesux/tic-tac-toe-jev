@@ -7,9 +7,11 @@ fail until the route handlers and in-process callers share that boundary.
 
 import asyncio
 import unittest
+from unittest.mock import patch
 
 import httpx
 
+from backend import main as main_module
 from backend.game_session import GameSession
 from backend.main import app, get_game_session
 
@@ -30,6 +32,21 @@ class GameSessionTests(unittest.IsolatedAsyncioTestCase):
             transport=httpx.ASGITransport(app=app),
             base_url="http://testserver",
         )
+
+    async def test_rest_read_and_move_before_create_keep_404_contract(self) -> None:
+        # Isolate this public REST scenario from the game created by asyncSetUp.
+        isolated_session = GameSession()
+        with patch.object(
+            main_module, "get_game_session", return_value=isolated_session
+        ):
+            async with self.client() as client:
+                read = await client.get("/api/game")
+                self.assertEqual(read.status_code, 404)
+                self.assertEqual(read.json(), {"detail": "No game created yet"})
+
+                move = await client.post("/api/game/move", json={"position": 0})
+                self.assertEqual(move.status_code, 404)
+                self.assertEqual(move.json(), {"detail": "No game created yet"})
 
     async def test_direct_session_create_read_and_alternating_turns(self) -> None:
         session = get_game_session()
@@ -112,6 +129,20 @@ class GameSessionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(after_game.status_code, 400)
             self.assertEqual(after_game.json()["detail"], "Game already completed")
 
+    async def test_o_win_keeps_rest_contract(self) -> None:
+        async with self.client() as client:
+            # O wins across the middle row; X's interleaved moves do not win.
+            for position in (0, 3, 1, 4, 8, 5):
+                response = await client.post(
+                    "/api/game/move", json={"position": position}
+                )
+                self.assertEqual(response.status_code, 200)
+
+            state = response.json()
+            self.assertEqual(state["winner"], "O")
+            self.assertEqual(state["status"], "completed")
+            self.assertTrue(state["gameOver"])
+
     async def test_draw_keeps_rest_contract(self) -> None:
         async with self.client() as client:
             # No line is completed by either mark in this full-board sequence.
@@ -127,6 +158,12 @@ class GameSessionTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(state["winner"])
             self.assertEqual(state["status"], "draw")
             self.assertTrue(state["gameOver"])
+
+            after_draw = await client.post("/api/game/move", json={"position": 0})
+            self.assertEqual(after_draw.status_code, 400)
+            self.assertEqual(
+                after_draw.json()["detail"], "Position already occupied"
+            )
 
     async def test_concurrent_public_moves_are_serialized(self) -> None:
         session = get_game_session()
