@@ -4,18 +4,19 @@ Provides REST API endpoints for single game operations.
 """
 
 import asyncio
-import httpx
 import json
 import logging
 import threading
 import time
-import torch
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
+import httpx
+import torch
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -31,16 +32,19 @@ def _serve_html_with_cache_bust(filename: str) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-from backend.models import (
-    MoveCreate,
-    GameResponse,
-)
-from config.config import get_backend_config, get_voice_config
 from backend.game_session import (
     GameSession,
     InvalidMoveError,
     NoGameError,
 )
+from backend.models import (
+    GameCommandRequest,
+    GameCommandResponse,
+    GameResponse,
+    MoveCreate,
+)
+from backend.player_command import PlayerCommandProcessor
+from config.config import get_backend_config, get_voice_config
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -64,8 +68,8 @@ def _get_orchestrator():
         if _orchestrator is not None:
             return _orchestrator
 
-        from voice_game_orchestrator import SLMClient, TextOrchestrator
         from voice_game_interface import VoiceGameInterface
+        from voice_game_orchestrator import SLMClient, TextOrchestrator
 
         model_name = get_voice_config().slm_model_name
         api_key = None  # Empty for local llama.cpp server
@@ -84,9 +88,6 @@ STATIC_MOUNT_POINT = "/static"
 STATIC_DIRECTORY = Path(__file__).parent.parent / "frontend" / "static"
 
 
-config = get_backend_config()
-app = FastAPI(title=config.api_title, version=config.api_version)
-
 # Single authoritative in-process game boundary.
 _game_session = GameSession()
 _orchestrator_lock = threading.Lock()
@@ -95,6 +96,46 @@ _orchestrator_lock = threading.Lock()
 def get_game_session() -> GameSession:
     """Return the application's shared asynchronous game-session boundary."""
     return _game_session
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Own one asynchronous TypeSafe client for the application lifetime."""
+    from typesafe_sdk import AsyncTypeSafeClient, TypeSafeError
+
+    try:
+        client = AsyncTypeSafeClient()
+    except TypeSafeError as error:
+        logger.warning("TypeSafe command service is not configured: %s", error)
+        application.state.command_processor = None
+        yield
+        return
+
+    from backend.jev_command_interpreter import JevCommandInterpreter
+
+    async with client:
+        application.state.typesafe_client = client
+        application.state.command_processor = PlayerCommandProcessor(
+            JevCommandInterpreter(client),
+            get_game_session(),
+        )
+        yield
+
+
+config = get_backend_config()
+app = FastAPI(
+    title=config.api_title,
+    version=config.api_version,
+    lifespan=lifespan,
+)
+
+
+def get_command_processor(request: Request) -> PlayerCommandProcessor:
+    """Return the application-lifetime Player Command processor."""
+    processor = getattr(request.app.state, "command_processor", None)
+    if processor is None:
+        raise HTTPException(status_code=503, detail="Command service unavailable")
+    return processor
 
 
 @app.get("/api/health")
@@ -247,6 +288,20 @@ async def make_move(move: MoveCreate):
         raise HTTPException(status_code=404, detail=str(error)) from error
     except InvalidMoveError as error:
         raise HTTPException(status_code=400, detail=error.detail) from error
+
+
+@app.post("/api/game/command", response_model=GameCommandResponse)
+async def process_game_command(
+    request: GameCommandRequest,
+    processor: Annotated[PlayerCommandProcessor, Depends(get_command_processor)],
+    session: Annotated[GameSession, Depends(get_game_session)],
+):
+    """Interpret and execute one Natural-Language Control in process."""
+    try:
+        game_state = await session.read()
+    except NoGameError:
+        game_state = None
+    return await processor.process(request.control, game_state)
 
 
 # Serve static files
@@ -458,6 +513,7 @@ async def voice_transcribe(request: TranscribeRequest):
     """Transcribe audio using local Qwen3-ASR model."""
     try:
         import base64
+
         import numpy as np
 
         # Decode base64 → bytes → float32 numpy array
