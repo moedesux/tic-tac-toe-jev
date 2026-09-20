@@ -3,7 +3,7 @@
 import unittest
 
 from backend.game_session import GameSession, NoGameError
-from backend.models import CommandIntent, MovePosition
+from backend.models import CommandIntent, MovePosition, PendingCommand
 from backend.player_command import (
     CommandInterpretation,
     PlayerCommandProcessor,
@@ -313,17 +313,244 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
         processor = PlayerCommandProcessor(
             FakeCommandInterpreter([
                 CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                CommandInterpretation(CommandIntent.GREETING, 0.92),
                 CommandInterpretation(CommandIntent.THANKS, 0.92),
+                CommandInterpretation(CommandIntent.UNCLEAR, 0.92),
                 CommandInterpretation(CommandIntent.UNCLEAR, 0.92, cancel_confidence=0.90),
             ]),
             session,
         )
 
         await processor.process("play")
+        greeting = await processor.process("hello")
+        self.assertIsNotNone(greeting.pending)
         thanks = await processor.process("thanks")
         self.assertIsNotNone(thanks.pending)
+        unclear = await processor.process("what")
+        self.assertIsNotNone(unclear.pending)
         cancelled = await processor.process("cancel")
         self.assertIsNone(cancelled.pending)
+        self.assertIsNone(session.pending)
+
+    async def test_low_confidence_follow_up_preserves_pending(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter([
+                CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                CommandInterpretation(CommandIntent.UNCLEAR, 0.40),
+            ]),
+            session,
+        )
+        await processor.process("play")
+        result = await processor.process("uh")
+        self.assertTrue(result.clarification_required)
+        self.assertIsNotNone(result.pending)
+        self.assertIsNotNone(session.pending)
+
+    async def test_confident_replacement_clears_pending_even_when_cell_is_invalid(self) -> None:
+        session = GameSession()
+        await session.create()
+        await session.move(4)
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter([
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE, 0.95,
+                    position=MovePosition.TOP_LEFT, position_confidence=0.70,
+                ),
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE, 0.95,
+                    position=MovePosition.CENTER, position_confidence=0.95,
+                ),
+            ]),
+            session,
+        )
+        await processor.process("maybe top left")
+        result = await processor.process("play center")
+        self.assertIn("occupied", result.message)
+        self.assertIsNone(result.pending)
+        self.assertIsNone(session.pending)
+
+    async def test_new_game_and_departure_clear_pending(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter([
+                CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                CommandInterpretation(CommandIntent.START_GAME, 0.95),
+                CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                CommandInterpretation(CommandIntent.GOODBYE, 0.95),
+            ]),
+            session,
+        )
+        await processor.process("play")
+        await processor.process("new game")
+        self.assertIsNone(session.pending)
+        await processor.process("play")
+        result = await processor.process("goodbye")
+        self.assertIsNone(result.pending)
+        self.assertIsNone(session.pending)
+
+    async def test_completed_game_clears_pending(self) -> None:
+        session = GameSession()
+        await session.create()
+        for index in (0, 3, 1, 4):
+            await session.move(index)
+        async with session.locked():
+            session.set_pending(PendingCommand())
+        await session.move(2)
+        self.assertIsNone(session.pending)
+
+    async def test_confident_gameplay_replaces_pending_move(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                [
+                    CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                    CommandInterpretation(
+                        CommandIntent.PLACE_MOVE,
+                        0.95,
+                        position=MovePosition.TOP_LEFT,
+                        position_confidence=0.95,
+                    ),
+                ]
+            ),
+            session,
+        )
+
+        await processor.process("play")
+        result = await processor.process("play top left")
+
+        self.assertFalse(result.clarification_required)
+        self.assertIsNone(result.pending)
+        self.assertIsNone(session.pending)
+        self.assertEqual((await session.read()).board[0], "X")
+
+    async def test_invalid_confident_replacement_also_clears_pending_move(self) -> None:
+        session = GameSession()
+        await session.create()
+        await session.move(MovePosition.CENTER.cell_index)
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                [
+                    CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                    CommandInterpretation(
+                        CommandIntent.PLACE_MOVE,
+                        0.95,
+                        position=MovePosition.CENTER,
+                        position_confidence=0.95,
+                    ),
+                ]
+            ),
+            session,
+        )
+
+        await processor.process("play")
+        result = await processor.process("play center")
+
+        self.assertIn("Position already occupied", result.message)
+        self.assertIsNone(result.pending)
+        self.assertIsNone(session.pending)
+        self.assertEqual((await session.read()).board[4], "X")
+
+    async def test_low_confidence_follow_up_preserves_pending_move(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                [
+                    CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                    CommandInterpretation(
+                        CommandIntent.PLACE_MOVE,
+                        0.40,
+                        position=MovePosition.TOP_LEFT,
+                        position_confidence=0.95,
+                    ),
+                ]
+            ),
+            session,
+        )
+
+        pending_result = await processor.process("play")
+        result = await processor.process("maybe top left")
+
+        self.assertTrue(result.clarification_required)
+        self.assertEqual(result.pending, pending_result.pending)
+        self.assertEqual((await session.read()).board, [None] * 9)
+        self.assertEqual(session.pending, pending_result.pending)
+
+    async def test_new_game_clears_pending_move_and_replaces_state(self) -> None:
+        session = GameSession()
+        original = await session.create()
+        await session.move(MovePosition.TOP_LEFT.cell_index)
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                [
+                    CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                    CommandInterpretation(CommandIntent.START_GAME, 0.95),
+                ]
+            ),
+            session,
+        )
+
+        await processor.process("play")
+        result = await processor.process("start over")
+        restarted = await session.read()
+
+        self.assertEqual(result.intent, CommandIntent.START_GAME)
+        self.assertIsNone(result.pending)
+        self.assertIsNone(session.pending)
+        self.assertNotEqual(restarted.gameId, original.gameId)
+        self.assertEqual(restarted.board, [None] * 9)
+
+    async def test_game_completion_clears_pending_move(self) -> None:
+        session = GameSession()
+        await session.create()
+        for position in (0, 3, 1, 4):
+            await session.move(position)
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                [
+                    CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                    CommandInterpretation(
+                        CommandIntent.PLACE_MOVE,
+                        0.95,
+                        position=MovePosition.TOP_RIGHT,
+                        position_confidence=0.95,
+                    ),
+                ]
+            ),
+            session,
+        )
+
+        await processor.process("play")
+        result = await processor.process("play top right")
+        completed = await session.read()
+
+        self.assertFalse(result.clarification_required)
+        self.assertIsNone(result.pending)
+        self.assertIsNone(session.pending)
+        self.assertEqual((completed.status, completed.winner), ("completed", "X"))
+
+    async def test_departure_clears_pending_move(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                [
+                    CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                    CommandInterpretation(CommandIntent.GOODBYE, 0.95),
+                ]
+            ),
+            session,
+        )
+
+        await processor.process("play")
+        result = await processor.process("goodbye")
+
+        self.assertEqual(result.intent, CommandIntent.GOODBYE)
+        self.assertIsNone(result.pending)
         self.assertIsNone(session.pending)
 
 

@@ -4,14 +4,19 @@ import unittest
 from types import SimpleNamespace
 
 from backend.jev_command_interpreter import JevCommandInterpreter
-from backend.models import CommandIntent, MovePosition
+from backend.models import CommandIntent, MovePosition, PendingCommand
 from backend.player_command import CommandInterpretation
 
 
 class RecordingTypeSafeClient:
-    def __init__(self, uniqueness: float = 0.1) -> None:
+    def __init__(
+        self,
+        uniqueness: float = 0.1,
+        pending_judgments: dict[str, float] | None = None,
+    ) -> None:
         self.calls: list[dict] = []
         self.uniqueness = uniqueness
+        self.pending_judgments = pending_judgments or {}
 
     async def system_one(self, *, state: dict, questions: dict):
         self.calls.append({"state": state, "questions": questions})
@@ -21,6 +26,10 @@ class RecordingTypeSafeClient:
                 "position": SimpleNamespace(choice="center", confidence=0.93),
                 "position_present": SimpleNamespace(noul=0.1),
                 "position_unique": SimpleNamespace(noul=self.uniqueness),
+                **{
+                    name: SimpleNamespace(noul=confidence)
+                    for name, confidence in self.pending_judgments.items()
+                },
             }
         )
 
@@ -45,6 +54,7 @@ class JevCommandInterpreterTests(unittest.IsolatedAsyncioTestCase):
             {
                 "natural_language_control": "Whose turn is it?",
                 "game": None,
+                "pending_command": None,
             },
         )
         self.assertEqual(
@@ -71,6 +81,43 @@ class JevCommandInterpreterTests(unittest.IsolatedAsyncioTestCase):
         criteria = client.calls[0]["questions"]["position"].criteria
         self.assertIn("row two column three", criteria[MovePosition.MIDDLE_RIGHT.value])
         self.assertIn("cell 6", criteria[MovePosition.MIDDLE_RIGHT.value])
+
+    async def test_pending_request_batches_cancellation_affirmation_and_rejection(self) -> None:
+        client = RecordingTypeSafeClient(
+            pending_judgments={
+                "pending_cancel": 0.91,
+                "pending_affirm": 0.82,
+                "pending_reject": 0.13,
+            }
+        )
+        interpreter = JevCommandInterpreter(client)
+
+        interpretation = await interpreter.interpret(
+            "yes, that works",
+            game_state=None,
+            pending=PendingCommand(position=MovePosition.CENTER),
+        )
+
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(
+            {
+                "pending_cancel",
+                "pending_affirm",
+                "pending_reject",
+            },
+            set(client.calls[0]["questions"]) & {
+                "pending_cancel",
+                "pending_affirm",
+                "pending_reject",
+            },
+        )
+        self.assertEqual(
+            client.calls[0]["state"]["pending_command"],
+            {"intent": "place_move", "position": "center"},
+        )
+        self.assertEqual(interpretation.cancel_confidence, 0.91)
+        self.assertEqual(interpretation.affirm_confidence, 0.82)
+        self.assertEqual(interpretation.reject_confidence, 0.13)
 
     async def test_uncertain_uniqueness_does_not_select_a_position(self) -> None:
         client = RecordingTypeSafeClient(uniqueness=0.5)
