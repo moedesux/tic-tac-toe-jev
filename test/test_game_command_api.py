@@ -51,6 +51,7 @@ class GameCommandApiTests(unittest.IsolatedAsyncioTestCase):
                 "position": None,
                 "confidence": 0.97,
                 "clarification_required": False,
+                "pending": None,
             },
         )
         self.assertEqual((await self.session.read()).board, [None] * 9)

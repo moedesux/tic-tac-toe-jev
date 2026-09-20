@@ -71,6 +71,13 @@ class MovePosition(str, Enum):
         }[self]
 
 
+class PendingCommand(BaseModel):
+    """A known move waiting for a position or confirmation."""
+
+    intent: CommandIntent = CommandIntent.PLACE_MOVE
+    position: MovePosition | None = None
+
+
 class PlayerCommandRequest(BaseModel):
     """A Natural-Language Control submitted to the command module."""
 
@@ -94,3 +101,4 @@ class CommandResult(BaseModel):
     position: MovePosition | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     clarification_required: bool
+    pending: PendingCommand | None = None

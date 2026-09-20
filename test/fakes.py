@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from backend.models import GameResponse
+from backend.models import GameResponse, PendingCommand
 from backend.player_command import CommandInterpretation
 
 
@@ -10,11 +10,14 @@ from backend.player_command import CommandInterpretation
 class InterpreterCall:
     control: str
     game_state: GameResponse | None
+    pending: PendingCommand | None
 
 
 class FakeCommandInterpreter:
-    def __init__(self, interpretation: CommandInterpretation) -> None:
-        self._interpretation = interpretation
+    def __init__(self, interpretation: CommandInterpretation | list[CommandInterpretation]) -> None:
+        self._interpretations = (
+            interpretation if isinstance(interpretation, list) else [interpretation]
+        )
         self.calls: list[InterpreterCall] = []
 
     @property
@@ -25,6 +28,8 @@ class FakeCommandInterpreter:
         self,
         control: str,
         game_state: GameResponse | None,
+        pending: PendingCommand | None = None,
     ) -> CommandInterpretation:
-        self.calls.append(InterpreterCall(control, game_state))
-        return self._interpretation
+        self.calls.append(InterpreterCall(control, game_state, pending))
+        index = min(len(self.calls) - 1, len(self._interpretations) - 1)
+        return self._interpretations[index]

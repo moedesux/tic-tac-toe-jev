@@ -286,11 +286,7 @@ async def process_game_command(
     session: Annotated[GameSession, Depends(get_game_session)],
 ):
     """Interpret and execute one Natural-Language Control in process."""
-    try:
-        game_state = await session.read()
-    except NoGameError:
-        game_state = None
-    return await processor.process(request.control, game_state)
+    return await processor.process(request.control, None)
 
 
 # Serve static files

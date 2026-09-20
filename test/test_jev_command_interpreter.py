@@ -49,7 +49,13 @@ class JevCommandInterpreterTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             set(client.calls[0]["questions"]),
-            {"intent", "position", "position_present", "position_unique"},
+            {
+                "intent",
+                "position",
+                "position_present",
+                "position_unique",
+                "initial_move_requested",
+            },
         )
         question = client.calls[0]["questions"]["intent"]
         self.assertEqual(

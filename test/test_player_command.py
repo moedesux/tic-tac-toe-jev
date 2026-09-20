@@ -232,6 +232,100 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(board_result.message, "Current board: X . . / . . . / . . .")
         self.assertEqual(status_result.message, "The game is ongoing. It is O's turn.")
 
+    async def test_missing_position_is_completed_by_follow_up_position(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter([
+                CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE,
+                    0.94,
+                    position=MovePosition.CENTER,
+                    position_confidence=0.95,
+                ),
+            ]),
+            session,
+        )
+
+        pending_result = await processor.process("play a move")
+        self.assertTrue(pending_result.clarification_required)
+        self.assertIsNotNone(pending_result.pending)
+        completed_result = await processor.process("the center")
+
+        self.assertFalse(completed_result.clarification_required)
+        self.assertIsNone(completed_result.pending)
+        self.assertEqual((await session.read()).board[4], "X")
+
+    async def test_proposed_position_requires_affirmation_and_rejection_reopens_choice(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter([
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE,
+                    0.95,
+                    position=MovePosition.CENTER,
+                    position_confidence=0.70,
+                ),
+                CommandInterpretation(
+                    CommandIntent.UNCLEAR,
+                    0.92,
+                    affirm_confidence=0.90,
+                ),
+            ]),
+            session,
+        )
+
+        proposed = await processor.process("maybe center")
+        self.assertTrue(proposed.clarification_required)
+        self.assertEqual((await session.read()).board, [None] * 9)
+        affirmed = await processor.process("yes")
+
+        self.assertFalse(affirmed.clarification_required)
+        self.assertEqual((await session.read()).board[4], "X")
+
+        rejection_processor = PlayerCommandProcessor(
+            FakeCommandInterpreter([
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE,
+                    0.95,
+                    position=MovePosition.TOP_LEFT,
+                    position_confidence=0.70,
+                ),
+                CommandInterpretation(
+                    CommandIntent.UNCLEAR,
+                    0.92,
+                    reject_confidence=0.90,
+                ),
+            ]),
+            session,
+        )
+        await rejection_processor.process("maybe top left")
+        rejected = await rejection_processor.process("no")
+        self.assertTrue(rejected.clarification_required)
+        self.assertIsNotNone(rejected.pending)
+        self.assertIsNone(rejected.pending.position)
+
+    async def test_cancellation_and_social_follow_up_preserve_expected_pending_state(self) -> None:
+        session = GameSession()
+        await session.create()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter([
+                CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
+                CommandInterpretation(CommandIntent.THANKS, 0.92),
+                CommandInterpretation(CommandIntent.UNCLEAR, 0.92, cancel_confidence=0.90),
+            ]),
+            session,
+        )
+
+        await processor.process("play")
+        thanks = await processor.process("thanks")
+        self.assertIsNotNone(thanks.pending)
+        cancelled = await processor.process("cancel")
+        self.assertIsNone(cancelled.pending)
+        self.assertIsNone(session.pending)
+
 
 if __name__ == "__main__":
     unittest.main()

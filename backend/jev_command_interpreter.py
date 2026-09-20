@@ -11,7 +11,7 @@ from typing import Any
 
 from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul
 
-from backend.models import CommandIntent, GameResponse, MovePosition
+from backend.models import CommandIntent, GameResponse, MovePosition, PendingCommand
 from backend.player_command import CommandInterpretation
 
 INTENT_CRITERIA = {
@@ -52,34 +52,57 @@ class JevCommandInterpreter:
         self,
         control: str,
         game_state: GameResponse | None,
+        pending: PendingCommand | None = None,
     ) -> CommandInterpretation:
+        questions = {
+            "intent": Choice(
+                instructions=(
+                    "Which single supported Command Intent best represents "
+                    "the player's Natural-Language Control?"
+                ),
+                criteria=INTENT_CRITERIA,
+            ),
+            "position": Choice(
+                instructions=(
+                    "Which single Move Position did the player identify? "
+                    "Use the board and utterance; never choose a position strategically."
+                ),
+                criteria=POSITION_CRITERIA,
+            ),
+            "position_present": Noul(
+                instructions="Did the player identify a specific board cell for this command?",
+            ),
+            "position_unique": Noul(
+                instructions="Does the player's board-relative description identify exactly one cell?",
+            ),
+            "initial_move_requested": Noul(
+                instructions="When starting a game, did the player also request an initial move?",
+            ),
+        }
+        if pending is not None:
+            # These independent judgments are deliberately part of the same
+            # request as intent/position; the processor never calls Jev again
+            # to classify a follow-up.
+            questions.update(
+                {
+                    "pending_cancel": Noul(
+                        instructions="Is this utterance clearly cancelling the pending move?",
+                    ),
+                    "pending_affirm": Noul(
+                        instructions="Is this utterance clearly affirming the proposed pending position?",
+                    ),
+                    "pending_reject": Noul(
+                        instructions="Is this utterance clearly rejecting the proposed pending position?",
+                    ),
+                }
+            )
         response = await self._client.system_one(
             state={
                 "natural_language_control": control,
                 "game": game_state.model_dump(mode="json") if game_state else None,
+                "pending_command": pending.model_dump(mode="json") if pending else None,
             },
-            questions={
-                "intent": Choice(
-                    instructions=(
-                        "Which single supported Command Intent best represents "
-                        "the player's Natural-Language Control?"
-                    ),
-                    criteria=INTENT_CRITERIA,
-                ),
-                "position": Choice(
-                    instructions=(
-                        "Which single Move Position did the player identify? "
-                        "Use the board and utterance; never choose a position strategically."
-                    ),
-                    criteria=POSITION_CRITERIA,
-                ),
-                "position_present": Noul(
-                    instructions="Did the player identify a specific board cell for this command?",
-                ),
-                "position_unique": Noul(
-                    instructions="Does the player's board-relative description identify exactly one cell?",
-                ),
-            },
+            questions=questions,
         )
         answer = response.choices["intent"]
         position_answer = response.choices.get("position")
@@ -95,6 +118,12 @@ class JevCommandInterpreter:
             confidence=answer.confidence,
             position=(MovePosition(position_answer.choice) if has_position else None),
             position_confidence=(position_answer.confidence if has_position else 0.0),
+            initial_move_requested=(
+                getattr(response.choices.get("initial_move_requested"), "noul", 0.0) >= 0.5
+            ),
+            cancel_confidence=getattr(response.choices.get("pending_cancel"), "noul", 0.0),
+            affirm_confidence=getattr(response.choices.get("pending_affirm"), "noul", 0.0),
+            reject_confidence=getattr(response.choices.get("pending_reject"), "noul", 0.0),
         )
 
 
