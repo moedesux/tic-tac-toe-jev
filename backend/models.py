@@ -33,9 +33,42 @@ class CommandIntent(str, Enum):
     START_GAME = "start_game"
     SHOW_BOARD = "show_board"
     SHOW_STATUS = "show_status"
+    PLACE_MOVE = "place_move"
     THANKS = "thanks"
     GOODBYE = "goodbye"
     UNCLEAR = "unclear"
+
+
+class MovePosition(str, Enum):
+    """The nine unambiguous cells available for a move."""
+
+    TOP_LEFT = "top_left"
+    TOP_CENTER = "top_center"
+    TOP_RIGHT = "top_right"
+    MIDDLE_LEFT = "middle_left"
+    CENTER = "center"
+    MIDDLE_RIGHT = "middle_right"
+    BOTTOM_LEFT = "bottom_left"
+    BOTTOM_CENTER = "bottom_center"
+    BOTTOM_RIGHT = "bottom_right"
+
+    @property
+    def cell_index(self) -> int:
+        return list(MovePosition).index(self)
+
+    @property
+    def aliases(self) -> tuple[str, ...]:
+        return {
+            MovePosition.TOP_LEFT: ("upper left", "northwest", "cell 1", "position 1"),
+            MovePosition.TOP_CENTER: ("top middle", "upper center", "cell 2", "position 2"),
+            MovePosition.TOP_RIGHT: ("upper right", "northeast", "cell 3", "position 3"),
+            MovePosition.MIDDLE_LEFT: ("middle left", "center left", "cell 4", "position 4"),
+            MovePosition.CENTER: ("middle", "exact center", "cell 5", "position 5"),
+            MovePosition.MIDDLE_RIGHT: ("middle right", "center right", "cell 6", "position 6"),
+            MovePosition.BOTTOM_LEFT: ("lower left", "southwest", "cell 7", "position 7"),
+            MovePosition.BOTTOM_CENTER: ("bottom middle", "lower center", "cell 8", "position 8"),
+            MovePosition.BOTTOM_RIGHT: ("lower right", "southeast", "cell 9", "position 9"),
+        }[self]
 
 
 class PlayerCommandRequest(BaseModel):
@@ -58,6 +91,6 @@ class CommandResult(BaseModel):
     success: bool
     message: str
     intent: CommandIntent
-    position: str | None = None
+    position: MovePosition | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     clarification_required: bool

@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from backend.game_session import GameSession
-from backend.models import CommandIntent, CommandResult, GameResponse
+from backend.game_session import GameSession, InvalidMoveError, NoGameError
+from backend.models import CommandIntent, CommandResult, GameResponse, MovePosition
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,8 @@ class CommandInterpretation:
 
     intent: CommandIntent
     confidence: float
+    position: MovePosition | None = None
+    position_confidence: float = 0.0
 
 
 class CommandInterpreter(Protocol):
@@ -32,6 +34,9 @@ class PlayerCommandProcessor:
 
     START_CONFIDENCE = 0.80
     BASELINE_CONFIDENCE = 0.60
+    MOVE_CONFIDENCE = 0.80
+    POSITION_CONFIDENCE = 0.80
+
 
     def __init__(
         self,
@@ -74,6 +79,40 @@ class PlayerCommandProcessor:
                 "New game started. X goes first.",
             )
 
+        if intent is CommandIntent.PLACE_MOVE:
+            if confidence < self.MOVE_CONFIDENCE or interpretation.position is None:
+                return self._result(
+                    intent, confidence,
+                    "Which position would you like to play?",
+                    clarification=True,
+                    position=interpretation.position,
+                )
+            if interpretation.position_confidence < self.POSITION_CONFIDENCE:
+                return self._result(
+                    intent, confidence,
+                    "I heard a move, but I'm not sure which position. Could you be more specific?",
+                    clarification=True,
+                    position=interpretation.position,
+                )
+            if game_state is None:
+                return self._result(
+                    intent, confidence,
+                    "No game has started. Say 'start' to begin a new game.",
+                    clarification=True,
+                    position=interpretation.position,
+                )
+            try:
+                await self._game_session.move(interpretation.position.cell_index)
+            except (NoGameError, InvalidMoveError) as error:
+                return self._result(
+                    intent, confidence, str(error), position=interpretation.position
+                )
+            return self._result(
+                intent, confidence,
+                f"You placed your mark at {interpretation.position.value.replace('_', ' ')}.",
+                position=interpretation.position,
+            )
+
         if intent is CommandIntent.GREETING:
             message = "Welcome to Tic-Tac-Toe! Say 'start' to begin a new game."
         elif intent is CommandIntent.SHOW_BOARD:
@@ -102,11 +141,13 @@ class PlayerCommandProcessor:
         message: str,
         *,
         clarification: bool = False,
+        position: MovePosition | None = None,
     ) -> CommandResult:
         return CommandResult(
             success=True,
             message=message,
             intent=intent,
+            position=position,
             confidence=confidence,
             clarification_required=clarification,
         )

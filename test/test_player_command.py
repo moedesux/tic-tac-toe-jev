@@ -3,7 +3,7 @@
 import unittest
 
 from backend.game_session import GameSession, NoGameError
-from backend.models import CommandIntent
+from backend.models import CommandIntent, MovePosition
 from backend.player_command import (
     CommandInterpretation,
     PlayerCommandProcessor,
@@ -12,6 +12,115 @@ from test.fakes import FakeCommandInterpreter
 
 
 class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_confident_move_commands_cover_all_nine_positions(self) -> None:
+        for position in MovePosition:
+            with self.subTest(position=position):
+                session = GameSession()
+                await session.create()
+                result = await PlayerCommandProcessor(
+                    FakeCommandInterpreter(
+                        CommandInterpretation(
+                            CommandIntent.PLACE_MOVE,
+                            confidence=0.95,
+                            position=position,
+                            position_confidence=0.94,
+                        )
+                    ),
+                    session,
+                ).process(f"play at {position.value}", await session.read())
+
+                self.assertFalse(result.clarification_required)
+                self.assertEqual(result.position, position)
+                self.assertEqual((await session.read()).board.count("X"), 1)
+
+    async def test_move_requires_game_and_does_not_create_one(self) -> None:
+        session = GameSession()
+        result = await PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE,
+                    confidence=0.95,
+                    position=MovePosition.CENTER,
+                    position_confidence=0.95,
+                )
+            ),
+            session,
+        ).process("play center", None)
+
+        self.assertTrue(result.clarification_required)
+        with self.assertRaises(NoGameError):
+            await session.read()
+
+    async def test_ambiguous_move_does_not_mutate_board(self) -> None:
+        session = GameSession()
+        await session.create()
+        before = await session.read()
+        result = await PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(CommandIntent.PLACE_MOVE, confidence=0.95)
+            ),
+            session,
+        ).process("play there", before)
+
+        self.assertTrue(result.clarification_required)
+        self.assertEqual((await session.read()).board, before.board)
+
+    async def test_occupied_move_is_rejected_by_game_rules(self) -> None:
+        session = GameSession()
+        await session.create()
+        await session.move(4)
+        before = await session.read()
+        result = await PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE,
+                    confidence=0.95,
+                    position=MovePosition.CENTER,
+                    position_confidence=0.95,
+                )
+            ),
+            session,
+        ).process("play center", before)
+
+        self.assertIn("Position already occupied", result.message)
+        self.assertEqual((await session.read()).board, before.board)
+
+    async def test_command_moves_preserve_win_and_draw_results(self) -> None:
+        winning_session = GameSession()
+        await winning_session.create()
+        for index in (0, 3, 1, 4, 2):
+            state = await winning_session.read()
+            await PlayerCommandProcessor(
+                FakeCommandInterpreter(
+                    CommandInterpretation(
+                        CommandIntent.PLACE_MOVE,
+                        0.95,
+                        position=list(MovePosition)[index],
+                        position_confidence=0.95,
+                    )
+                ),
+                winning_session,
+            ).process("play", state)
+        winning_state = await winning_session.read()
+        self.assertEqual((winning_state.status, winning_state.winner), ("completed", "X"))
+
+        draw_session = GameSession()
+        await draw_session.create()
+        for index in (0, 1, 2, 4, 3, 5, 7, 6, 8):
+            state = await draw_session.read()
+            await PlayerCommandProcessor(
+                FakeCommandInterpreter(
+                    CommandInterpretation(
+                        CommandIntent.PLACE_MOVE,
+                        0.95,
+                        position=list(MovePosition)[index],
+                        position_confidence=0.95,
+                    )
+                ),
+                draw_session,
+            ).process("play", state)
+        draw_state = await draw_session.read()
+        self.assertEqual((draw_state.status, draw_state.winner), ("draw", None))
     async def test_explicit_confident_start_creates_the_only_game(self) -> None:
         session = GameSession()
         interpreter = FakeCommandInterpreter(

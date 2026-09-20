@@ -41,7 +41,10 @@ class JevCommandInterpreterTests(unittest.IsolatedAsyncioTestCase):
                 "game": None,
             },
         )
-        self.assertEqual(set(client.calls[0]["questions"]), {"intent"})
+        self.assertEqual(
+            set(client.calls[0]["questions"]),
+            {"intent", "position", "position_present", "position_unique"},
+        )
         question = client.calls[0]["questions"]["intent"]
         self.assertEqual(
             set(question.criteria), {intent.value for intent in CommandIntent}
