@@ -231,6 +231,10 @@ start_backend() {
     backend_host="$(read_config_value "$BACKEND_CONF" "backend" "host")"
     backend_host="${backend_host:-0.0.0.0}"
 
+    # Pin the live command interpreter to the version validated by issue #7.
+    # An explicit deployment environment value still takes precedence.
+    export TYPESAFE_DEFAULT_MODEL="${TYPESAFE_DEFAULT_MODEL:-jev-1.13.0}"
+
     # Start the backend server with nohup
     nohup uv run --with fastapi --with uvicorn uvicorn backend.main:app --host "${backend_host}" --port "${BACKEND_PORT}" > "${PROJECT_DIR}/logs/backend.log" 2>&1 &
     local backend_pid=$!

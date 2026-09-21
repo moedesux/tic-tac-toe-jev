@@ -27,6 +27,10 @@ class CommandInterpretation:
     affirm_confidence: float = 0.0
     reject_confidence: float = 0.0
     initial_move_requested: bool = False
+    position_present_confidence: float = 0.0
+    position_unique_confidence: float = 0.0
+    initial_move_confidence: float = 0.0
+    state_change_confidence: float = 1.0
 
 
 class CommandInterpreter(Protocol):
@@ -43,12 +47,12 @@ class CommandInterpreter(Protocol):
 class PlayerCommandProcessor:
     """Process one command and own its explicit pending-command transitions."""
 
-    START_CONFIDENCE = 0.80
+    START_CONFIDENCE = 0.60
     RESET_START_CONFIDENCE = 0.90
     BASELINE_CONFIDENCE = 0.60
-    MOVE_CONFIDENCE = 0.80
-    POSITION_CONFIDENCE = 0.80
-    FOLLOW_UP_CONFIDENCE = 0.80
+    MOVE_CONFIDENCE = 0.30
+    POSITION_CONFIDENCE = 0.40
+    FOLLOW_UP_CONFIDENCE = 0.75
 
     def __init__(self, interpreter: CommandInterpreter, game_session: GameSession) -> None:
         self._interpreter = interpreter
@@ -110,7 +114,10 @@ class PlayerCommandProcessor:
                 pending=replacement,
             )
 
-        if confidence < self.BASELINE_CONFIDENCE:
+        if (
+            intent not in {CommandIntent.START_GAME, CommandIntent.PLACE_MOVE}
+            and confidence < self.BASELINE_CONFIDENCE
+        ):
             return self._result(
                 intent,
                 confidence,

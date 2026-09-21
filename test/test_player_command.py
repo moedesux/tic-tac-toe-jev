@@ -59,6 +59,25 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result.position, position)
                 self.assertEqual((await session.read()).board.count("X"), 1)
 
+    async def test_move_gate_is_independent_from_read_only_social_gate(self) -> None:
+        session = GameSession()
+        await session.create()
+
+        result = await PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(
+                    CommandIntent.PLACE_MOVE,
+                    confidence=0.44,
+                    position=MovePosition.CENTER,
+                    position_confidence=0.52,
+                )
+            ),
+            session,
+        ).process("play center")
+
+        self.assertFalse(result.clarification_required)
+        self.assertEqual((await session.read()).board[4], "X")
+
     async def test_move_requires_game_and_does_not_create_one(self) -> None:
         session = GameSession()
         result = await PlayerCommandProcessor(
@@ -243,7 +262,7 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
                     CommandIntent.START_GAME,
                     0.96,
                     position=MovePosition.CENTER,
-                    position_confidence=0.79,
+                    position_confidence=0.30,
                     initial_move_requested=True,
                 )
             ),
@@ -421,7 +440,7 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
                     CommandIntent.PLACE_MOVE,
                     0.95,
                     position=MovePosition.CENTER,
-                    position_confidence=0.70,
+                    position_confidence=0.30,
                 ),
                 CommandInterpretation(
                     CommandIntent.UNCLEAR,
@@ -446,7 +465,7 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
                     CommandIntent.PLACE_MOVE,
                     0.95,
                     position=MovePosition.TOP_LEFT,
-                    position_confidence=0.70,
+                    position_confidence=0.30,
                 ),
                 CommandInterpretation(
                     CommandIntent.UNCLEAR,
@@ -618,7 +637,7 @@ class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
                     CommandInterpretation(CommandIntent.PLACE_MOVE, 0.95),
                     CommandInterpretation(
                         CommandIntent.PLACE_MOVE,
-                        0.40,
+                        0.29,
                         position=MovePosition.TOP_LEFT,
                         position_confidence=0.95,
                     ),

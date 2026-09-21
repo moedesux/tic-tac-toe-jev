@@ -34,3 +34,20 @@ The test names above live in `test/test_player_command.py`,
 `test/test_game_command_api.py`.
 
 Live confidence calibration remains a separate migration criterion.
+
+Issue #7 calibration evidence is produced by `uv run python
+scripts/evaluate_jev_fixtures.py`. It uses the same `fixtures/command_behaviors.jsonl`
+corpus as deterministic tests, skips when `TYPESAFE_API_KEY` is absent, and emits
+only aggregate intent/position matches and confidence distributions. The four
+policy gates are recorded independently as `read_only_social`, `move`,
+`existing_game_reset`, and `position_selection`. The evaluator reports and
+checks the resolved `response.model`; production startup pins the validated
+version through `TYPESAFE_DEFAULT_MODEL` while allowing an explicit deployment
+override. A credential-free invocation still skips clearly.
+
+The calibrated Jev 1.13.0 policy is: baseline/read-only/social `0.60`, move
+`0.30`, existing-game reset `0.90`, and position selection `0.40`. Position
+reference presence/uniqueness use `0.40`, and pending follow-ups use `0.75`.
+Three consecutive pinned evaluations passed with zero canonical, safety, or
+composed behavior failures. The final sanitized judgment distributions are in
+`docs/calibration/jev-1.13.0.json`.
