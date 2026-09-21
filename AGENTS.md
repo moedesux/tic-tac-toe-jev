@@ -49,6 +49,11 @@ uv run pytest -q test/test_repository_standards.py
 uv run pytest -q
 ```
 
+For credential-gated verification, when a required key is unset in the shell
+and a repository `.env` exists, load it with `uv run --env-file .env ...`.
+Treat loaded values as secrets: report only whether each key is available,
+never its value.
+
 Tests that require models, hardware, credentials, or running services must be
 reported separately from deterministic tests. Never replace a missing production
 dependency with a test shim when verifying the real integration.
