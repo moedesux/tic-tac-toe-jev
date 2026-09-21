@@ -9,7 +9,7 @@ import numpy as np
 from backend_command_client import BackendCommandClient, BackendCommandError
 from backend.game_session import GameSession
 from backend.main import app, get_command_processor
-from backend.models import CommandIntent
+from backend.models import CommandIntent, MovePosition
 from backend.player_command import CommandInterpretation, PlayerCommandProcessor
 from test.fakes import FakeCommandInterpreter
 from voice_tic_tac_toe import VoiceTicTacToe, _validate_config
@@ -122,34 +122,66 @@ class StandaloneCommandTests(unittest.TestCase):
             timeout=10.0,
         )
 
-    def test_adapter_matches_real_backend_command_result(self):
+    def test_adapter_matches_representative_real_backend_command_results(self):
         session = GameSession()
         processor = PlayerCommandProcessor(
             FakeCommandInterpreter(
-                CommandInterpretation(CommandIntent.START_GAME, confidence=0.97)
+                [
+                    CommandInterpretation(CommandIntent.START_GAME, confidence=0.97),
+                    CommandInterpretation(
+                        CommandIntent.PLACE_MOVE,
+                        confidence=0.95,
+                        position=MovePosition.CENTER,
+                        position_confidence=0.95,
+                        position_present_confidence=0.95,
+                        position_unique_confidence=0.95,
+                    ),
+                    CommandInterpretation(
+                        CommandIntent.PLACE_MOVE,
+                        confidence=0.95,
+                    ),
+                ]
             ),
             session,
         )
+        controls = ["Start a game", "Move center", "Make a move"]
 
         async def request():
             app.dependency_overrides[get_command_processor] = lambda: processor
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app), base_url="http://testserver"
             ) as client:
-                return await client.post(
-                    "/api/game/command", json={"control": "Start a game"}
-                )
+                responses = [
+                    await client.post(
+                        "/api/game/command", json={"control": control}
+                    )
+                    for control in controls
+                ]
+            state = await session.read()
+            async with session.locked():
+                pending = session.pending
+            return responses, state, pending
 
         try:
-            response = asyncio.run(request())
+            responses, state, pending = asyncio.run(request())
         finally:
             app.dependency_overrides.clear()
-        expected = response.json()
-        fake_response = unittest.mock.Mock(ok=True)
-        fake_response.json.return_value = expected
-        with patch("backend_command_client.requests.post", return_value=fake_response):
-            result = BackendCommandClient("http://testserver").process("Start a game")
-        self.assertEqual(result, expected)
+        expected = [response.json() for response in responses]
+        fake_responses = []
+        for result in expected:
+            fake_response = unittest.mock.Mock(ok=True)
+            fake_response.json.return_value = result
+            fake_responses.append(fake_response)
+        with patch(
+            "backend_command_client.requests.post", side_effect=fake_responses
+        ):
+            actual = [
+                BackendCommandClient("http://testserver").process(control)
+                for control in controls
+            ]
+        self.assertEqual(actual, expected)
+        self.assertEqual(state.board[MovePosition.CENTER.cell_index], "X")
+        self.assertIsNotNone(pending)
 
 
 if __name__ == "__main__":

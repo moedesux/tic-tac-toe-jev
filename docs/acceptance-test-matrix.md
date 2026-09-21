@@ -34,7 +34,7 @@ it whenever command acceptance criteria or test ownership changes.
 | Browser typed text and Web Speech transcripts share the domain command route | `test_browser_controller_smoke` |
 | Browser structured controls bypass Jev and remain usable without TypeSafe | `test_browser_controller_smoke`; `test_structured_departure_bypasses_interpretation_and_clears_pending` |
 | Browser renders domain responses and passive TypeSafe health | `test_browser_controller_smoke` |
-| Standalone microphone and simulation transcripts share the backend command path; responses reach TTS and failures recover | `test/test_standalone_command.py`: `test_microphone_loop_transcribes_then_uses_shared_command_path`; `test_simulation_text_uses_same_path_for_clarification`; `test_backend_failure_is_reported_and_loop_can_continue`; `test_http_adapter_has_bounded_timeout_and_maps_connection_failure`; `test_adapter_matches_real_backend_command_result` |
+| Standalone microphone and simulation transcripts share the backend command path; responses reach TTS and failures recover | `test/test_standalone_command.py`: `test_microphone_loop_transcribes_then_uses_shared_command_path`; `test_simulation_text_uses_same_path_for_clarification`; `test_backend_failure_is_reported_and_loop_can_continue`; `test_http_adapter_has_bounded_timeout_and_maps_connection_failure`; `test_adapter_matches_representative_real_backend_command_results` |
 
 The test names above live in `test/test_player_command.py`,
 `test/test_jev_command_interpreter.py`, `test/test_game_session.py`,
