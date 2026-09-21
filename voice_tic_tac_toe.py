@@ -19,8 +19,7 @@ import sounddevice as sd
 
 from asr import Qwen3ASR, GameEndRequested
 from config.config import get_voice_config
-from voice_game_interface import VoiceGameInterface
-from voice_game_orchestrator import SLMClient, TextOrchestrator
+from backend_command_client import BackendCommandClient, BackendCommandError
 from tts import KokoroTTS
 
 RECORD_SAMPLE_RATE = 16_000  # Hz, mono
@@ -31,12 +30,12 @@ class VoiceTicTacToe:
 
     def __init__(
         self,
-        asr: Qwen3ASR,
-        orchestrator: TextOrchestrator,
+        asr: Qwen3ASR | None,
+        command_client: BackendCommandClient,
         tts: KokoroTTS | None,
     ):
         self.asr = asr
-        self.orchestrator = orchestrator
+        self.command_client = command_client
         self.tts = tts
 
     def record_utterance(self) -> tuple[np.ndarray, int]:
@@ -77,8 +76,40 @@ class VoiceTicTacToe:
         sd.play(audio, samplerate=sample_rate)
         sd.wait()
 
-    def run(self) -> None:
+    def process_transcript(self, transcript: str) -> bool:
+        """Send one transcript, speak its domain response, and return whether to stop."""
+        try:
+            result = self.command_client.process(transcript)
+        except BackendCommandError as error:
+            print(f"  Backend: {error}")
+            return False
+        response = result["message"]
+        print(f"  Bot: {response}")
+        if self.tts:
+            tts_audio, tts_sr = self.tts.synthesize(response)
+            self.play_audio(tts_audio, tts_sr)
+        return result.get("intent") == "goodbye"
+
+    def run_simulation(self) -> None:
+        """Read typed controls while using the same backend command path."""
+        print("Simulation mode (type commands; Ctrl-D to stop)\n")
+        try:
+            while True:
+                transcript = input("  You: ").strip()
+                if not transcript:
+                    continue
+                if self.process_transcript(transcript):
+                    break
+        except (EOFError, KeyboardInterrupt):
+            print("\nBot: Thanks for playing Tic-Tac-Toe!")
+
+    def run(self, simulation: bool = False) -> None:
         """Main loop."""
+        if simulation:
+            self.run_simulation()
+            return
+        if self.asr is None:
+            raise RuntimeError("Microphone mode requires ASR")
         print("Voice Tic-Tac-Toe (push-to-talk - say 'quit' or 'exit' to stop)\n")
 
         try:
@@ -98,17 +129,8 @@ class VoiceTicTacToe:
                     continue
 
                 # 3. Orchestrator
-                response = self.orchestrator.process_utterance(transcript)
-                if response is None:
-                    print("Bot: Thanks for playing Tic-Tac-Toe!")
+                if self.process_transcript(transcript):
                     break
-
-                # 4. TTS + playback
-                if self.tts:
-                    tts_audio, tts_sr = self.tts.synthesize(response)
-                    self.play_audio(tts_audio, tts_sr)
-                else:
-                    print(f"  Bot: {response}")
 
         except (KeyboardInterrupt, EOFError, GameEndRequested):
             print("\nBot: Thanks for playing Tic-Tac-Toe!")
@@ -141,13 +163,6 @@ def _resolve_config_defaults(args: argparse.Namespace) -> argparse.Namespace:
         vc = None  # type: ignore[assignment]
 
     # SLM
-    if args.slm_model is None:
-        args.slm_model = vc.slm_model_name if vc is not None else _DEFAULT_SLM_MODEL
-    if args.slm_port is None:
-        args.slm_port = vc.slm_port if vc is not None else _DEFAULT_SLM_PORT
-    if args.api_key is None:
-        args.api_key = vc.slm_api_key if vc is not None else _DEFAULT_API_KEY
-
     # ASR
     if args.asr_model is None:
         args.asr_model = vc.asr_model_path if vc is not None else _DEFAULT_ASR_MODEL
@@ -167,17 +182,20 @@ def _resolve_config_defaults(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
-def _validate_config(args: argparse.Namespace, tts_enabled: bool = True) -> None:
+def _validate_config(
+    args: argparse.Namespace, tts_enabled: bool = True, simulation: bool = False
+) -> None:
     """Validate that required packages and model paths are available. Exit with error if not."""
     from pathlib import Path
 
     # 1. Strict mode: require qwen_asr and kokoro_onnx
-    try:
-        import qwen_asr  # noqa: F401
-    except ImportError:
-        print("ERROR: qwen_asr package is not installed.")
-        print("Install it with: uv pip install qwen_asr")
-        exit(1)
+    if not simulation:
+        try:
+            import qwen_asr  # noqa: F401
+        except ImportError:
+            print("ERROR: qwen_asr package is not installed.")
+            print("Install it with: uv pip install qwen_asr")
+            exit(1)
 
     if tts_enabled:
         try:
@@ -188,7 +206,7 @@ def _validate_config(args: argparse.Namespace, tts_enabled: bool = True) -> None
             exit(1)
 
     # 2. Validate model paths exist on disk
-    if not Path(args.asr_model).is_dir():
+    if not simulation and not Path(args.asr_model).is_dir():
         print(f"ERROR: --asr-model path does not exist: {args.asr_model}")
         exit(1)
     if tts_enabled:
@@ -202,20 +220,6 @@ def _validate_config(args: argparse.Namespace, tts_enabled: bool = True) -> None
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Voice Tic-Tac-Toe")
-
-    # SLM / orchestrator
-    parser.add_argument(
-        "--slm-model",
-        type=str,
-        default=None,
-        help="Model name served by the SLM backend",
-    )
-    parser.add_argument(
-        "--slm-port", type=int, default=None, help="Port of the SLM server"
-    )
-    parser.add_argument(
-        "--api-key", type=str, default=None, help="API key for SLM server"
-    )
 
     # ASR
     parser.add_argument(
@@ -265,7 +269,7 @@ def main() -> None:
         help="Torch device for ASR/TTS models",
     )
     parser.add_argument(
-        "--debug", action="store_true", help="Print raw SLM output each turn"
+        "--simulation", action="store_true", help="Use typed transcripts instead of a microphone"
     )
     args = parser.parse_args()
 
@@ -280,11 +284,11 @@ def main() -> None:
         tts_enabled = True  # default to enabled if config unavailable
 
     # --- Validate config ---
-    _validate_config(args, tts_enabled=tts_enabled)
+    _validate_config(args, tts_enabled=tts_enabled, simulation=args.simulation)
 
     # --- Build components ---
     print("Loading ASR model...")
-    asr = Qwen3ASR(model_path=args.asr_model, device=args.device)
+    asr = None if args.simulation else Qwen3ASR(model_path=args.asr_model, device=args.device)
 
     if not tts_enabled:
         print("TTS disabled — responses will be printed to console only")
@@ -299,13 +303,11 @@ def main() -> None:
             lang=args.tts_lang,
         )
 
-    game = VoiceGameInterface()
-    slm = SLMClient(model_name=args.slm_model, api_key=args.api_key, port=args.slm_port)
-    orchestrator = TextOrchestrator(slm, game, debug=args.debug)
+    command_client = BackendCommandClient(get_voice_config().api_base_url)
 
     # --- Run ---
-    game_voice = VoiceTicTacToe(asr=asr, orchestrator=orchestrator, tts=tts)
-    game_voice.run()
+    game_voice = VoiceTicTacToe(asr=asr, command_client=command_client, tts=tts)
+    game_voice.run(simulation=args.simulation)
 
 
 if __name__ == "__main__":

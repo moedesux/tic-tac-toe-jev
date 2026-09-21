@@ -600,8 +600,13 @@ show_help() {
 # Main Execution
 # ============================================================================
 main() {
+    # Options such as --simulation are launch options, not subcommands.
     local command="${1:-start}"
-    shift || true
+    if [[ "${command}" == -* ]]; then
+        command="start"
+    else
+        shift || true
+    fi
     
     # Parse game options
     local game_args=()
@@ -614,7 +619,9 @@ main() {
                 game_args+=("--simulation")
                 ;;
             --debug)
-                game_args+=("--debug")
+                # Kept for compatibility with older launchers; the standalone
+                # client no longer has a local inference debug mode.
+                :
                 ;;
             *)
                 game_args+=("$arg")
