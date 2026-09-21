@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 
 from backend.jev_command_interpreter import JevCommandInterpreter
-from backend.models import CommandIntent, MovePosition, PendingCommand
+from backend.models import CommandIntent, GameResponse, MovePosition, PendingCommand
 from backend.player_command import CommandInterpretation
 
 
@@ -12,11 +12,17 @@ class RecordingTypeSafeClient:
     def __init__(
         self,
         uniqueness: float = 0.1,
+        presence: float = 0.1,
+        intent: str = "show_status",
+        position: str = "center",
         pending_judgments: dict[str, float] | None = None,
         initial_move_requested_confidence: float = 0.0,
     ) -> None:
         self.calls: list[dict] = []
         self.uniqueness = uniqueness
+        self.presence = presence
+        self.intent = intent
+        self.position = position
         self.pending_judgments = pending_judgments or {}
         self.initial_move_requested_confidence = initial_move_requested_confidence
 
@@ -24,9 +30,9 @@ class RecordingTypeSafeClient:
         self.calls.append({"state": state, "questions": questions})
         return SimpleNamespace(
             choices={
-                "intent": SimpleNamespace(choice="show_status", confidence=0.93),
-                "position": SimpleNamespace(choice="center", confidence=0.93),
-                "position_present": SimpleNamespace(noul=0.1),
+                "intent": SimpleNamespace(choice=self.intent, confidence=0.93),
+                "position": SimpleNamespace(choice=self.position, confidence=0.93),
+                "position_present": SimpleNamespace(noul=self.presence),
                 "position_unique": SimpleNamespace(noul=self.uniqueness),
                 "initial_move_requested": SimpleNamespace(
                     noul=self.initial_move_requested_confidence
@@ -140,6 +146,39 @@ class JevCommandInterpreterTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertIsNone(interpretation.position)
+
+    async def test_unique_board_relative_judgment_returns_typed_position_and_full_game_state(self) -> None:
+        client = RecordingTypeSafeClient(
+            uniqueness=0.94,
+            presence=0.96,
+            intent=CommandIntent.PLACE_MOVE.value,
+            position=MovePosition.MIDDLE_RIGHT.value,
+        )
+        game_state = GameResponse(
+            gameId="game-1",
+            board=["X", None, "O", "O", "X", None, None, None, None],
+            turn="X",
+            winner=None,
+            status="ongoing",
+            gameOver=False,
+        )
+
+        interpretation = await JevCommandInterpreter(client).interpret(
+            "play in the only open spot in the middle row",
+            game_state,
+        )
+
+        self.assertEqual(interpretation.intent, CommandIntent.PLACE_MOVE)
+        self.assertEqual(interpretation.position, MovePosition.MIDDLE_RIGHT)
+        self.assertEqual(interpretation.position_confidence, 0.93)
+        self.assertEqual(
+            client.calls[0]["state"]["game"],
+            game_state.model_dump(mode="json"),
+        )
+        self.assertEqual(
+            client.calls[0]["state"]["natural_language_control"],
+            "play in the only open spot in the middle row",
+        )
 
 
 if __name__ == "__main__":

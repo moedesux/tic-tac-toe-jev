@@ -3,15 +3,41 @@
 import unittest
 
 from backend.game_session import GameSession, NoGameError
+from backend.jev_command_interpreter import JevCommandInterpreter
 from backend.models import CommandIntent, MovePosition, PendingCommand
 from backend.player_command import (
     CommandInterpretation,
     PlayerCommandProcessor,
 )
+from test.test_jev_command_interpreter import RecordingTypeSafeClient
 from test.fakes import FakeCommandInterpreter
 
 
 class PlayerCommandProcessorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_unique_board_relative_adapter_move_applies_current_mark_and_alternates(self) -> None:
+        session = GameSession()
+        await session.create()
+        for index in (0, 2, 3, 4):
+            await session.move(index)
+
+        client = RecordingTypeSafeClient(
+            uniqueness=0.94,
+            presence=0.96,
+            intent=CommandIntent.PLACE_MOVE.value,
+            position=MovePosition.MIDDLE_RIGHT.value,
+        )
+        result = await PlayerCommandProcessor(
+            JevCommandInterpreter(client), session
+        ).process(
+            "play in the only open spot in the middle row",
+            await session.read(),
+        )
+
+        state = await session.read()
+        self.assertEqual(result.position, MovePosition.MIDDLE_RIGHT)
+        self.assertEqual(state.board[MovePosition.MIDDLE_RIGHT.cell_index], "X")
+        self.assertEqual(state.turn, "O")
+
     async def test_confident_move_commands_cover_all_nine_positions(self) -> None:
         for position in MovePosition:
             with self.subTest(position=position):

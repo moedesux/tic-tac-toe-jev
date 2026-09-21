@@ -8,6 +8,7 @@ it whenever command acceptance criteria or test ownership changes.
 | All nine positions execute through the command module | `test_confident_move_commands_cover_all_nine_positions` |
 | Moves require an existing game | `test_move_requires_game_and_does_not_create_one` |
 | Ambiguous or uncertain moves do not mutate the board | `test_ambiguous_move_does_not_mutate_board`; `test_uncertain_position_clarifies_without_mutation` |
+| Unique board-relative judgment resolves to a typed position and executes with current-player alternation | `test_unique_board_relative_judgment_returns_typed_position_and_full_game_state`; `test_unique_board_relative_adapter_move_applies_current_mark_and_alternates` |
 | Game rules reject occupied cells and retain win/draw semantics | `test_occupied_move_is_rejected_by_game_rules`; `test_command_moves_preserve_win_and_draw_results` |
 | Missing position creates pending state and a follow-up completes it | `test_missing_position_is_completed_by_follow_up_position` |
 | Medium-confidence position requires confirmation | `test_proposed_position_requires_affirmation_and_rejection_reopens_choice` |
