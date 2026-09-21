@@ -10,10 +10,26 @@ from contextlib import asynccontextmanager
 import os
 from typing import Any
 
-from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul
+from typesafe_sdk import (
+    AsyncTypeSafeClient,
+    Choice,
+    Noul,
+    TypeSafeAPIConnectionError,
+    TypeSafeAPIResponseValidationError,
+    TypeSafeAPITimeoutError,
+    TypeSafeAuthenticationError,
+    TypeSafeBadRequestError,
+    TypeSafeError,
+    TypeSafeInternalServerError,
+    TypeSafeNotFoundError,
+    TypeSafePermissionDeniedError,
+    TypeSafeRateLimitError,
+    TypeSafeUnprocessableEntityError,
+)
 
 from backend.models import CommandIntent, GameResponse, MovePosition, PendingCommand
 from backend.player_command import CommandInterpretation
+from backend.typesafe_health import TypeSafeFailureKind, TypeSafeOperationalError
 
 INTENT_CRITERIA = {
     CommandIntent.GREETING.value: "The player greets the game or says hello.",
@@ -65,6 +81,13 @@ class JevCommandInterpreter:
     def __init__(self, client: Any) -> None:
         self._client = client
         self.last_model: str | None = None
+        self.last_usage: dict[str, int | None] | None = None
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        """Provider-neutral operational metadata for safe structured logging."""
+        return {"model": self.last_model, "usage": self.last_usage}
+
 
     async def interpret(
         self,
@@ -149,11 +172,23 @@ class JevCommandInterpreter:
                     ),
                 }
             )
-        response = await self._client.system_one(
-            state=state,
-            questions=questions,
-        )
+        try:
+            response = await self._client.system_one(
+                state=state,
+                questions=questions,
+            )
+        except TypeSafeError as error:
+            raise _translate_typesafe_error(error) from error
         self.last_model = getattr(response, "model", None)
+        usage = getattr(response, "usage", None)
+        self.last_usage = (
+            {
+                "input_tokens": getattr(usage, "input_tokens", None),
+                "output_tokens": getattr(usage, "output_tokens", None),
+            }
+            if usage is not None
+            else None
+        )
         answer = response.choices["intent"]
         position_answer = response.choices.get("position")
         nouls = response.nouls
@@ -242,6 +277,40 @@ class JevCommandInterpreter:
                 "board_relative_references_must_resolve_to_one_cell": True,
             },
         }
+
+
+class MissingConfigurationInterpreter:
+    """Explicit unavailable adapter used when credentials are not configured."""
+
+    metadata = {"model": None}
+
+    async def interpret(self, control: str, game_state: Any, pending: Any = None) -> CommandInterpretation:
+        from backend.typesafe_health import MissingTypeSafeConfigurationError
+        raise MissingTypeSafeConfigurationError
+
+
+def _translate_typesafe_error(error: TypeSafeError) -> TypeSafeOperationalError:
+    """Keep SDK exceptions and provider response bodies inside this adapter."""
+    request_id = getattr(error, "request_id", None)
+    if isinstance(error, (TypeSafeAuthenticationError, TypeSafePermissionDeniedError)):
+        kind = TypeSafeFailureKind.AUTHENTICATION
+    elif isinstance(error, TypeSafeRateLimitError):
+        kind = TypeSafeFailureKind.RATE_LIMIT
+    elif isinstance(error, TypeSafeAPITimeoutError):
+        kind = TypeSafeFailureKind.TIMEOUT
+    elif isinstance(error, TypeSafeAPIConnectionError):
+        kind = TypeSafeFailureKind.TRANSPORT
+    elif isinstance(error, TypeSafeInternalServerError) and error.status == 503:
+        kind = TypeSafeFailureKind.OVERLOAD
+    elif isinstance(error, (TypeSafeNotFoundError, TypeSafeInternalServerError)):
+        kind = TypeSafeFailureKind.SERVICE_UNAVAILABLE
+    elif isinstance(error, (TypeSafeBadRequestError, TypeSafeUnprocessableEntityError)):
+        kind = TypeSafeFailureKind.BAD_REQUEST
+    elif isinstance(error, TypeSafeAPIResponseValidationError):
+        kind = TypeSafeFailureKind.MALFORMED_RESPONSE
+    else:
+        kind = TypeSafeFailureKind.UNKNOWN
+    return TypeSafeOperationalError(kind, request_id=request_id)
 
 
 @asynccontextmanager

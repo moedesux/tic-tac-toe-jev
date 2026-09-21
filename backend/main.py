@@ -6,8 +6,10 @@ Provides REST API endpoints for single game operations.
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Optional
@@ -44,6 +46,12 @@ from backend.models import (
     PlayerCommandRequest,
 )
 from backend.player_command import PlayerCommandProcessor
+from backend.typesafe_health import (
+    TypeSafeHealthStatus,
+    TypeSafeOperationalError,
+    map_typesafe_error,
+    typesafe_health,
+)
 from config.config import get_backend_config, get_voice_config
 
 # Module-level logger
@@ -101,13 +109,14 @@ def get_game_session() -> GameSession:
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Own one asynchronous TypeSafe client for the application lifetime."""
-    from backend.jev_command_interpreter import open_jev_command_interpreter
-
+    from backend.jev_command_interpreter import MissingConfigurationInterpreter, open_jev_command_interpreter
+    typesafe_health.reset()
+    if not os.getenv("TYPESAFE_API_KEY"):
+        application.state.command_processor = PlayerCommandProcessor(MissingConfigurationInterpreter(), get_game_session())
+        yield
+        return
     async with open_jev_command_interpreter() as interpreter:
-        application.state.command_processor = PlayerCommandProcessor(
-            interpreter,
-            get_game_session(),
-        )
+        application.state.command_processor = PlayerCommandProcessor(interpreter, get_game_session())
         yield
 
 
@@ -135,6 +144,12 @@ async def health_check():
         "service": config.api_title,
         "version": config.api_version,
     }
+
+
+@app.get("/api/health/typesafe")
+async def typesafe_health_check():
+    """Return cached TypeSafe state; this endpoint never calls the provider."""
+    return typesafe_health.snapshot()
 
 
 @app.get("/api/health/asr")
@@ -285,7 +300,43 @@ async def process_game_command(
     processor: Annotated[PlayerCommandProcessor, Depends(get_command_processor)],
 ):
     """Interpret and execute one Natural-Language Control in process."""
-    return await processor.process(request.control, None)
+    request_id = uuid.uuid4().hex
+    started = time.perf_counter()
+    try:
+        result = await processor.process(request.control, None)
+    except TypeSafeOperationalError as error:
+        mapping = map_typesafe_error(error)
+        if mapping.health_status is TypeSafeHealthStatus.UNAVAILABLE:
+            typesafe_health.record_unavailable()
+        elif mapping.health_status is TypeSafeHealthStatus.DEGRADED:
+            typesafe_health.record(success=False)
+        logger.warning(
+            "typesafe command failed request_id=%s provider_request_id=%s status=%s "
+            "code=%s latency_ms=%.1f",
+            request_id,
+            error.request_id,
+            mapping.http_status,
+            mapping.code,
+            (time.perf_counter() - started) * 1000,
+        )
+        raise HTTPException(
+            status_code=mapping.http_status,
+            detail={"code": mapping.code, "request_id": request_id},
+        ) from error
+    metadata = getattr(processor, "metadata", {})
+    typesafe_health.record(success=True, model=metadata.get("model"))
+    usage = metadata.get("usage")
+    logger.info(
+        "typesafe command completed request_id=%s status=success latency_ms=%.1f "
+        "confidence=%.3f model=%s input_tokens=%s output_tokens=%s",
+        request_id,
+        (time.perf_counter() - started) * 1000,
+        result.confidence,
+        metadata.get("model"),
+        usage.get("input_tokens") if isinstance(usage, dict) else None,
+        usage.get("output_tokens") if isinstance(usage, dict) else None,
+    )
+    return result
 
 
 # Serve static files

@@ -25,6 +25,9 @@ it whenever command acceptance criteria or test ownership changes.
 | Compound start with a precise initial move creates the game and places X atomically while retaining start intent | `test_start_with_precise_initial_move_is_one_atomic_start_transition` |
 | Compound start without a position starts the game and creates a missing-position pending command | `test_start_with_missing_initial_position_starts_and_waits_for_position` |
 | Compound start with an uncertain position starts without moving and creates a confirmation pending command | `test_start_with_uncertain_initial_position_starts_without_moving` |
+| TypeSafe failures use stable non-success HTTP mappings and safe request identifiers | `test_typesafe_failure_mapping` |
+| TypeSafe health reports configuration and cached command outcomes | `test_typesafe_health_transitions_and_recovery`; `test_successful_uncertainty_is_healthy_http_success`; `test_failed_command_updates_health_and_sanitizes_output` |
+| Health polling does not call the interpreter | `test_typesafe_health_endpoint_is_passive` |
 | Unsupported compounds execute only the selected supported action | `test_unsupported_compound_executes_only_the_selected_action` |
 | Initial move judgment is independently batched by the Jev adapter | `test_start_move_judgment_is_batched_as_an_independent_choice` |
 | Replacing an existing game requires stricter start confidence | `test_existing_game_requires_stricter_confidence_to_reset_for_start`; `test_high_confidence_start_can_reset_existing_game` |

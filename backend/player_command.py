@@ -57,6 +57,12 @@ class PlayerCommandProcessor:
     def __init__(self, interpreter: CommandInterpreter, game_session: GameSession) -> None:
         self._interpreter = interpreter
         self._game_session = game_session
+        self._metadata: dict[str, object] = {}
+
+    @property
+    def metadata(self) -> dict[str, object]:
+        """Safe provider-neutral metadata exposed for operational logging."""
+        return dict(self._metadata)
 
     async def process(
         self,
@@ -76,6 +82,8 @@ class PlayerCommandProcessor:
         interpretation = await self._interpreter.interpret(
             control, current_state, pending
         )
+        metadata = getattr(self._interpreter, "metadata", {})
+        self._metadata = dict(metadata) if isinstance(metadata, dict) else {}
 
         async with self._game_session.locked():
             return self._process_locked(interpretation)

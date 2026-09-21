@@ -82,6 +82,18 @@ Transport, exhausted rate limiting, missing credentials, and unavailable-model f
 
 `GET /api/health/typesafe` performs no external call. It reports missing configuration or the cached outcome of real command requests: configured/unverified, healthy, degraded, or unavailable. Frontend polling therefore consumes no TypeSafe usage.
 
+Command failures use stable public mappings: missing configuration is `503
+typesafe_not_configured`; malformed provider requests are `400
+typesafe_bad_request`; authentication or permission failures are `401
+typesafe_authentication_failed`; rate limits are `429 typesafe_rate_limited`;
+transport failures are `502 typesafe_transport_failed`; timeouts are `504
+typesafe_timeout`; overload is `503 typesafe_overloaded`; and unavailable models
+or services are `503 typesafe_service_unavailable`. Malformed provider responses
+use `502 typesafe_malformed_response`. Responses contain only the code and a
+request identifier; credentials, utterances, and provider bodies are never
+logged. A successfully returned uncertain judgment remains `200` with
+`clarification_required`.
+
 ## Configuration
 
 Use server environment variables:
