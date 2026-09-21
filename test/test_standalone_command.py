@@ -1,10 +1,17 @@
 import argparse
+import asyncio
 import unittest
 from unittest.mock import patch
 
+import httpx
 import numpy as np
 
 from backend_command_client import BackendCommandClient, BackendCommandError
+from backend.game_session import GameSession
+from backend.main import app, get_command_processor
+from backend.models import CommandIntent
+from backend.player_command import CommandInterpretation, PlayerCommandProcessor
+from test.fakes import FakeCommandInterpreter
 from voice_tic_tac_toe import VoiceTicTacToe, _validate_config
 
 
@@ -114,6 +121,35 @@ class StandaloneCommandTests(unittest.TestCase):
             json={"control": "Start a game"},
             timeout=10.0,
         )
+
+    def test_adapter_matches_real_backend_command_result(self):
+        session = GameSession()
+        processor = PlayerCommandProcessor(
+            FakeCommandInterpreter(
+                CommandInterpretation(CommandIntent.START_GAME, confidence=0.97)
+            ),
+            session,
+        )
+
+        async def request():
+            app.dependency_overrides[get_command_processor] = lambda: processor
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client:
+                return await client.post(
+                    "/api/game/command", json={"control": "Start a game"}
+                )
+
+        try:
+            response = asyncio.run(request())
+        finally:
+            app.dependency_overrides.clear()
+        expected = response.json()
+        fake_response = unittest.mock.Mock(ok=True)
+        fake_response.json.return_value = expected
+        with patch("backend_command_client.requests.post", return_value=fake_response):
+            result = BackendCommandClient("http://testserver").process("Start a game")
+        self.assertEqual(result, expected)
 
 
 if __name__ == "__main__":

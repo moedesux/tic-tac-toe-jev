@@ -1,13 +1,15 @@
-"""Voice Tic-Tac-Toe — full speech pipeline.
+"""Standalone voice client for the shared backend Player Command endpoint.
 
-Ties ASR, TextOrchestrator, and TTS together with push-to-talk mic/speaker I/O.
+Retains local ASR and TTS while delegating command interpretation and game
+state to the backend.
 
 Usage:
     python voice_tic_tac_toe.py \\
-        --slm-model model --slm-port 8080 --api-key "empty" \\
         --asr-model models/Qwen3-ASR-0.6B \\
         --tts-model models/kokoro-v1.0.onnx \\
-        --device cuda:0 --debug
+        --device cuda:0
+
+    python voice_tic_tac_toe.py --simulation
 """
 
 from __future__ import annotations
@@ -17,16 +19,16 @@ import argparse
 import numpy as np
 import sounddevice as sd
 
-from asr import Qwen3ASR, GameEndRequested
-from config.config import get_voice_config
 from backend_command_client import BackendCommandClient, BackendCommandError
+from asr import GameEndRequested, Qwen3ASR
+from config.config import get_voice_config
 from tts import KokoroTTS
 
 RECORD_SAMPLE_RATE = 16_000  # Hz, mono
 
 
 class VoiceTicTacToe:
-    """Push-to-talk voice loop: mic -> ASR -> orchestrator -> TTS -> speaker."""
+    """Voice loop connecting local ASR/TTS to the backend command API."""
 
     def __init__(
         self,
@@ -128,7 +130,7 @@ class VoiceTicTacToe:
                     print("  (empty transcript, try again)")
                     continue
 
-                # 3. Orchestrator
+                # 3. Submit the transcript to the shared backend command API.
                 if self.process_transcript(transcript):
                     break
 
@@ -138,9 +140,6 @@ class VoiceTicTacToe:
 
 # Emergency fallback defaults — only used when config loading fails entirely.
 # Actual values are in config/voice.conf and loaded via VoiceConfig.
-_DEFAULT_SLM_MODEL = "moe249/google_gemma-4-E4B-it-tictactoe"
-_DEFAULT_SLM_PORT = 8080
-_DEFAULT_API_KEY = "EMPTY"
 _DEFAULT_ASR_MODEL = "models/Qwen3-ASR-0.6B"
 _DEFAULT_TTS_MODEL = "models/kokoro-v1.0.onnx"
 _DEFAULT_TTS_VOICES = "models/voices-v1.0.bin"
@@ -162,7 +161,6 @@ def _resolve_config_defaults(args: argparse.Namespace) -> argparse.Namespace:
     except Exception:
         vc = None  # type: ignore[assignment]
 
-    # SLM
     # ASR
     if args.asr_model is None:
         args.asr_model = vc.asr_model_path if vc is not None else _DEFAULT_ASR_MODEL

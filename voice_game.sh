@@ -315,6 +315,7 @@ launch_voice_game() {
     for arg in "${@:-}"; do
         case "$arg" in
             --simulation)
+                game_args+=("--simulation")
                 simulation_mode=true
                 log_info "Running in simulation mode (text-based)"
                 ;;
