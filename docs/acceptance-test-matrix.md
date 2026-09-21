@@ -31,10 +31,13 @@ it whenever command acceptance criteria or test ownership changes.
 | Unsupported compounds execute only the selected supported action | `test_unsupported_compound_executes_only_the_selected_action` |
 | Initial move judgment is independently batched by the Jev adapter | `test_start_move_judgment_is_batched_as_an_independent_choice` |
 | Replacing an existing game requires stricter start confidence | `test_existing_game_requires_stricter_confidence_to_reset_for_start`; `test_high_confidence_start_can_reset_existing_game` |
+| Browser typed text and Web Speech transcripts share the domain command route | `test_browser_controller_smoke` |
+| Browser structured controls bypass Jev and remain usable without TypeSafe | `test_browser_controller_smoke`; `test_structured_departure_bypasses_interpretation_and_clears_pending` |
+| Browser renders domain responses and passive TypeSafe health | `test_browser_controller_smoke` |
 
 The test names above live in `test/test_player_command.py`,
-`test/test_jev_command_interpreter.py`, `test/test_game_session.py`, and
-`test/test_game_command_api.py`.
+`test/test_jev_command_interpreter.py`, `test/test_game_session.py`,
+`test/test_game_command_api.py`, and `test/test_browser_controller.py`.
 
 Live confidence calibration remains a separate migration criterion.
 

@@ -14,10 +14,22 @@ import httpx
 from backend import main as main_module
 from backend.game_session import GameSession
 from backend.main import app, get_game_session
+from backend.models import PendingCommand
 
 
 class GameSessionTests(unittest.IsolatedAsyncioTestCase):
-    """Verify game behavior through both the in-process and REST boundaries."""
+    """Verify game behavior through both in-process and REST boundaries."""
+
+    async def test_structured_departure_clears_pending_and_preserves_game(self) -> None:
+        session = GameSession()
+        created = await session.create()
+        async with session.locked():
+            session.set_pending(PendingCommand())
+
+        await session.depart()
+
+        self.assertIsNone(session.pending)
+        self.assertEqual((await session.read()).gameId, created.gameId)
 
     async def asyncSetUp(self) -> None:
         # Creating through the public REST endpoint gives every test a fresh

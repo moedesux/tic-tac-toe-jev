@@ -82,6 +82,11 @@ class GameSession:
         async with self._lock:
             return self.move_locked(position)
 
+    async def depart(self) -> None:
+        """Clear pending dialogue when a player leaves through a structured control."""
+        async with self._lock:
+            self._pending = None
+
     def move_locked(self, position: int) -> GameResponse:
         """Apply a move while called inside ``locked()``."""
         game = self._require_game()

@@ -136,18 +136,60 @@ function clearVoiceChat() {
 
 // Create a new game
 function createGame() {
-    fetch(GAME_ENDPOINT, { method: 'POST' })
-        .then(response => response.json())
+    return fetch(GAME_ENDPOINT, { method: 'POST' })
+        .then(async response => {
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.detail || 'Failed to create game.');
+            return data;
+        })
         .then(data => {
-            clearVoiceChat();
             currentGameData = data;
             renderGame(data);
             renderStatus(data.turn, null, data.status);
+            const message = 'New game started. X goes first.';
+            addVoiceMessage('bot', message);
+            playBotResponse(message);
         })
         .catch(error => {
             console.error('Error creating game:', error);
             showToast('Failed to create game. Please try again.', 'error');
         });
+}
+
+async function submitStructuredMove(position) {
+    try {
+        const response = await fetch(MOVE_ENDPOINT, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({position})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Invalid move.');
+        currentGameData = data;
+        renderGame(data); renderStatus(data.turn, data.winner, data.status);
+    } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function showCurrentGame() {
+    try {
+        const response = await fetch(GAME_ENDPOINT);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'No game has started.');
+        currentGameData = data;
+        renderGame(data); renderStatus(data.turn, data.winner, data.status);
+    } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function departGame() {
+    try {
+        const response = await fetch(`${GAME_ENDPOINT}/depart`, { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(readErrorDetail(data, response.status));
+        addVoiceMessage('bot', data.message);
+        showToast(data.message, 'success');
+    } catch (error) {
+        addVoiceMessage('bot', `Error: ${error.message}`);
+        showToast(error.message, 'error');
+    }
 }
 
 // ============================================================================
@@ -241,10 +283,60 @@ function showThinkingIndicator() {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
+// Shared seam for typed and Web Speech submissions.
+function handleTranscription(text) {
+    const control = text?.trim();
+    if (!control) return;
+    const input = document.getElementById('voice-input');
+    if (input) input.value = control;
+    const send = document.getElementById('send-cmd-btn');
+    if (send) send.click();
+}
+
+async function transcribeAudio(base64Audio, sampleRate) {
+    const audioDuration = (base64Audio.length / 4 * 3 / sampleRate).toFixed(2);
+    console.log(`[Transcribe] Sending audio: ~${audioDuration}s, base64 size: ${base64Audio.length} chars`);
+    try {
+        const response = await fetch('/api/voice/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio: base64Audio, sample_rate: sampleRate })
+        });
+        console.log(`[Transcribe] Response status: ${response.status}`);
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(errText || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        const text = data.text?.trim();
+        if (text) {
+            console.log(`[Transcribe] Transcribed: "${text}"`);
+            handleTranscription(text);
+        } else {
+            addVoiceMessage('bot', "I didn't hear anything. Please try again.");
+        }
+    } catch (error) {
+        console.error('[Transcribe] Failed:', error);
+        showToast(`Transcription failed: ${error.message}`, 'error');
+        addVoiceMessage('bot', 'Transcription failed. Please try again.');
+    }
+}
+
 // Remove thinking indicator
 function hideThinkingIndicator() {
     const existing = document.getElementById('thinking-indicator');
     if (existing) existing.remove();
+}
+
+function readErrorDetail(body, status) {
+    const detail = body?.detail;
+    if (typeof detail === 'string') return detail;
+    if (detail && !Array.isArray(detail) && typeof detail.code === 'string') return detail.code;
+    if (Array.isArray(detail)) {
+        const messages = detail.map(item => item?.msg).filter(Boolean);
+        if (messages.length) return messages.join('; ');
+    }
+    return `HTTP ${status}`;
 }
 
 // Play bot response audio via TTS API
@@ -302,45 +394,7 @@ async function executeVoiceCommand(functionName, cmdArgs) {
     const input = document.getElementById('voice-input');
     const commandText = input ? input.value.trim() : '';
     
-    // Ensure a game exists before processing any command
-    try {
-        const gameCheck = await fetch(GAME_ENDPOINT);
-        if (!gameCheck.ok) {
-            // No game exists — create one
-            console.log('[Voice] No game exists, creating one...');
-            await createGame();
-        }
-    } catch (error) {
-        console.error('[Voice] Error checking game state:', error);
-        // Attempt to create a game so commands can still proceed
-        try {
-            console.log('[Voice] Attempting to create game after check failure...');
-            await createGame();
-        } catch (createError) {
-            console.error('[Voice] Failed to create game:', createError);
-            showToast('Could not connect to game server. Please refresh the page.', 'error');
-            addVoiceMessage("bot", 'Could not connect to the game server. Please refresh the page and try again.');
-            isProcessing = false;
-            return;
-        }
-    }
-
-    // Handle greeting — direct response (no SLM needed)
-    if (functionName === "greeting") {
-        addVoiceMessage("bot", RESPONSE_TEMPLATES.greeting);
-        isProcessing = false;
-        return;
-    }
-    
-    // Handle goodbye — direct response with exit alert
-    if (functionName === "goodbye") {
-        addVoiceMessage("bot", RESPONSE_TEMPLATES.goodbye);
-        showToast("Thanks for playing!", "success");
-        isProcessing = false;
-        return;
-    }
-    
-    // Derive the natural language text to send to SLM
+    // Derive the natural-language control sent to the domain command endpoint.
     let textToSend = '';
     
     // Priority 1: Input field text (captured above before any await)
@@ -348,7 +402,7 @@ async function executeVoiceCommand(functionName, cmdArgs) {
         textToSend = commandText;
     }
     
-    // Priority 2: Place move from button click (overrides input)
+    // Natural-language controls always use the shared domain command endpoint.
     if (functionName === 'place_move' && cmdArgs && cmdArgs.row !== undefined) {
         const posDesc = getPositionDescription(cmdArgs.row, cmdArgs.col);
         textToSend = `place at ${posDesc}`;
@@ -357,11 +411,8 @@ async function executeVoiceCommand(functionName, cmdArgs) {
     // Priority 3: Map function name to natural language text
     if (!textToSend) {
         const cmdMap = {
-            start_game: 'start game',
-            show_board: 'show board', 
-            check_status: 'check status',
-            quit: 'quit',
-            greeting: 'hello',
+            start_game: 'start game', show_board: 'show board',
+            check_status: 'check status', quit: 'quit', greeting: 'hello',
             place_move: 'place a move'
         };
         textToSend = cmdMap[functionName] || commandText;
@@ -375,16 +426,16 @@ async function executeVoiceCommand(functionName, cmdArgs) {
     }
     
     try {
-        console.log('[Voice] Sending command to SLM:', textToSend);
+        console.log('[Voice] Sending command to domain API:', textToSend);
         showThinkingIndicator();
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), VOICE_COMMAND_TIMEOUT);
 
-        const response = await fetch('/api/voice/command', {
+        const response = await fetch('/api/game/command', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: textToSend }),
+            body: JSON.stringify({ control: textToSend }),
             signal: controller.signal
         });
 
@@ -393,9 +444,8 @@ async function executeVoiceCommand(functionName, cmdArgs) {
         console.log('[Voice] Response status:', response.status);
 
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('[Voice] API error:', errorText);
-            throw new Error(`HTTP ${response.status}`);
+            const error = await response.json().catch(() => ({}));
+            throw new Error(readErrorDetail(error, response.status));
         }
 
         const data = await response.json();
@@ -403,16 +453,15 @@ async function executeVoiceCommand(functionName, cmdArgs) {
 
         hideThinkingIndicator();
 
-        if (data.success && data.response) {
-            addVoiceMessage("bot", data.response);
-            playBotResponse(data.response);
+        if (data.message) {
+            addVoiceMessage("bot", data.message);
+            playBotResponse(data.message);
         } else {
-            addVoiceMessage("bot", data.response || "I didn't quite understand that. I can help you start a game, place moves, check the board, or check the status.");
-            playBotResponse(data.response || "I didn't quite understand that.");
+            addVoiceMessage("bot", "I didn't quite understand that.");
         }
 
         // Re-render game board if the command succeeded
-        if (data.success) {
+        if (data.success && data.intent !== 'greeting' && data.intent !== 'thanks' && data.intent !== 'goodbye' && data.intent !== 'unclear') {
             const gameResponse = await fetch('/api/game');
             if (gameResponse.ok) {
                 const gameData = await gameResponse.json();
@@ -438,7 +487,7 @@ async function executeVoiceCommand(functionName, cmdArgs) {
 // ============================================================================
 
 const BACKEND_HEALTH_URL = '/api/health';
-const SLM_HEALTH_URL = '/api/health/slm';
+const TYPESAFE_HEALTH_URL = '/api/health/typesafe';
 const ASR_HEALTH_URL = '/api/health/asr';
 const TTS_HEALTH_URL = '/api/health/tts';
 const HEALTH_CHECK_INTERVAL = 15000; // 15 seconds
@@ -446,7 +495,7 @@ const HEALTH_CHECK_TIMEOUT = 5000; // 5 second timeout per health check fetch
 
 const serverStatuses = {
     backend: { status: 'checking', lastChecked: null, error: null },
-    slm: { status: 'checking', lastChecked: null, error: null },
+    typesafe: { status: 'checking', lastChecked: null, error: null },
     asr: { status: 'checking', lastChecked: null, error: null },
     tts: { status: 'checking', lastChecked: null, error: null }
 };
@@ -471,6 +520,10 @@ async function checkServerHealth(serverName, url) {
                     serverStatuses[serverName].status = 'up';
                     serverStatuses[serverName].error = null;
                 }
+            } else if (serverName === 'typesafe') {
+                const data = await response.json();
+                serverStatuses[serverName].status = data.status || 'unavailable';
+                serverStatuses[serverName].error = data.error || null;
             } else {
                 serverStatuses[serverName].status = 'up';
                 serverStatuses[serverName].error = null;
@@ -489,14 +542,14 @@ async function checkServerHealth(serverName, url) {
 
 async function checkAllServers() {
     serverStatuses.backend.status = 'checking';
-    serverStatuses.slm.status = 'checking';
+    serverStatuses.typesafe.status = 'checking';
     serverStatuses.asr.status = 'checking';
     serverStatuses.tts.status = 'checking';
     updateServerStatusUI();
     
     await Promise.all([
         checkServerHealth('backend', BACKEND_HEALTH_URL),
-        checkServerHealth('slm', SLM_HEALTH_URL),
+        checkServerHealth('typesafe', TYPESAFE_HEALTH_URL),
         checkServerHealth('asr', ASR_HEALTH_URL),
         checkServerHealth('tts', TTS_HEALTH_URL)
     ]);
@@ -508,7 +561,12 @@ function updateServerStatusUI() {
         const badge = document.getElementById(`${serverName}-status`);
         if (!dot || !badge) continue;
         
-        dot.className = `status-dot status-${status.status}`;
+        const dotStatus = status.status === 'healthy' || status.status === 'up'
+            ? 'up'
+            : status.status === 'checking' || status.status === 'unverified'
+                ? 'checking'
+                : 'down';
+        dot.className = `status-dot status-${dotStatus}`;
         
         const deviceInfo = status.device ? ` [${status.device.toUpperCase()}]` : '';
         const timeStr = status.lastChecked 
@@ -619,6 +677,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize voice control event listeners (only if elements exist)
     const micBtn = document.getElementById('mic-btn');
     if (micBtn) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let browserRecognition = null;
+        if (SpeechRecognition) {
+            micBtn.addEventListener('click', function() {
+                if (browserRecognition) {
+                    browserRecognition.stop();
+                    return;
+                }
+                browserRecognition = new SpeechRecognition();
+                browserRecognition.interimResults = false;
+                browserRecognition.maxAlternatives = 1;
+                browserRecognition.onresult = event => {
+                    handleTranscription(event.results[0][0].transcript);
+                };
+                browserRecognition.onerror = event => {
+                    showToast(`Speech recognition failed: ${event.error}`, 'error');
+                };
+                browserRecognition.onend = () => {
+                    browserRecognition = null;
+                    micBtn.classList.remove('listening');
+                    micBtn.textContent = '🎤';
+                };
+                micBtn.classList.add('listening');
+                micBtn.textContent = '⏹️ Stop';
+                browserRecognition.start();
+            });
+        }
         let mediaStream = null;
         let audioContext = null;
         let scriptProcessor = null;
@@ -627,6 +712,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let isTranscribing = false;
         
         micBtn.addEventListener('click', async function() {
+            if (SpeechRecognition) return;
             if (isRecording) {
                 // STOP recording and transcribe
                 stopRecording();
@@ -721,7 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
             base64Audio = btoa(base64Audio);
             
             // Transcribe via backend
-            transcribeAudio(base64Audio, targetSampleRate);
+            submitRecordedAudio(base64Audio, targetSampleRate);
         }
         
         // Simple linear interpolation resampler
@@ -745,52 +831,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return result;
         }
         
-        function transcribeAudio(base64Audio, sampleRate) {
+        function submitRecordedAudio(base64Audio, sampleRate) {
             isTranscribing = true;
             micBtn.textContent = '⏳';  // loading indicator
-            
-            const audioDuration = (base64Audio.length / 4 * 3 / sampleRate).toFixed(2);
-            console.log(`[Transcribe] Sending audio: ~${audioDuration}s, base64 size: ${base64Audio.length} chars`);
-            
-            fetch('/api/voice/transcribe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ audio: base64Audio, sample_rate: sampleRate })
-            })
-            .then(async response => {
-                console.log(`[Transcribe] Response status: ${response.status}`);
-                if (!response.ok) {
-                    const errText = await response.text();
-                    console.error(`[Transcribe] Error response:`, errText);
-                    throw new Error(errText || `HTTP ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log(`[Transcribe] Response data:`, JSON.stringify(data));
-                const text = data.text?.trim();
-                if (text) {
-                    console.log(`[Transcribe] Transcribed: "${text}"`);
-                    // Populate voice input and auto-submit
-                    const voiceInput = document.getElementById('voice-input');
-                    if (voiceInput) voiceInput.value = text;
-                    
-                    const sendBtn = document.getElementById('send-cmd-btn');
-                    if (sendBtn) {
-                        // 300ms delay to let the input field populate before triggering send
-                        setTimeout(() => sendBtn.click(), 300);
-                    }
-                } else {
-                    console.warn('[Transcribe] Empty transcription result');
-                    addVoiceMessage("bot", "I didn't hear anything. Please try again.");
-                }
-            })
-            .catch(error => {
-                console.error('[Transcribe] Failed:', error);
-                showToast('Transcription failed: ' + error.message, 'error');
-                addVoiceMessage("bot", 'Transcription failed. Please try again.');
-            })
-            .finally(() => {
+            transcribeAudio(base64Audio, sampleRate).finally(() => {
                 isTranscribing = false;
                 if (isRecording) {
                     // If still recording (shouldn't happen), restore button state
@@ -802,7 +846,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Send button triggers command via SLM pipeline
+    // Typed text and browser speech transcripts share this submission path.
     const sendBtn = document.getElementById('send-cmd-btn');
     if (sendBtn) {
         sendBtn.addEventListener('click', function() {
@@ -814,11 +858,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show user command
             addVoiceMessage("user", text);
             
-            // Execute via SLM pipeline
-            executeVoiceCommand(text, {});
-            
+            const submission = executeVoiceCommand(text, {});
             // Clear input
             input.value = '';
+            return submission;
         });
     }
 
@@ -853,8 +896,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Show user command
                 addVoiceMessage("user", text);
                 
-                // Execute via SLM pipeline
-                executeVoiceCommand(cmd, {});
+                if (cmd === 'start_game') return createGame();
+                else if (cmd === 'show_board' || cmd === 'check_status') return showCurrentGame();
+                else if (cmd === 'quit') return departGame();
+                else return executeVoiceCommand(cmd, {});
             });
         });
     }
@@ -873,8 +918,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Show user command
                 addVoiceMessage("user", `place at ${posDesc}`);
                 
-                // Execute move via SLM pipeline
-                executeVoiceCommand('place_move', { row: parseInt(row), col: parseInt(col) });
+                return submitStructuredMove(parseInt(row) * 3 + parseInt(col));
             });
         });
     }

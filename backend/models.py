@@ -26,6 +26,12 @@ class GameResponse(BaseModel):
     gameOver: bool
 
 
+class MessageResponse(BaseModel):
+    """Deterministic application response for a structured control."""
+
+    message: str
+
+
 class CommandIntent(str, Enum):
     """Meanings supported by the first Player Command slice."""
 

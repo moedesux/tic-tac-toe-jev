@@ -42,6 +42,7 @@ from backend.game_session import (
 from backend.models import (
     CommandResult,
     GameResponse,
+    MessageResponse,
     MoveCreate,
     PlayerCommandRequest,
 )
@@ -292,6 +293,13 @@ async def make_move(move: MoveCreate):
         raise HTTPException(status_code=404, detail=str(error)) from error
     except InvalidMoveError as error:
         raise HTTPException(status_code=400, detail=error.detail) from error
+
+
+@app.post("/api/game/depart", response_model=MessageResponse)
+async def depart_game():
+    """Apply a structured departure without invoking natural-language interpretation."""
+    await get_game_session().depart()
+    return MessageResponse(message="Thanks for playing! Goodbye!")
 
 
 @app.post("/api/game/command", response_model=CommandResult)

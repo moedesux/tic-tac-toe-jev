@@ -87,6 +87,23 @@ class GameCommandApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(self.interpreter.call_count, 0)
 
+    async def test_structured_departure_bypasses_interpretation_and_clears_pending(self) -> None:
+        await self.session.create()
+        async with self.session.locked():
+            from backend.models import PendingCommand
+
+            self.session.set_pending(PendingCommand())
+
+        with unittest.mock.patch("backend.main.get_game_session", return_value=self.session):
+            async with self.client() as client:
+                response = await client.post("/api/game/depart")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"message": "Thanks for playing! Goodbye!"})
+        self.assertIsNone(self.session.pending)
+        self.assertEqual(self.interpreter.call_count, 0)
+        self.assertEqual((await self.session.read()).status, "ongoing")
+
 
 if __name__ == "__main__":
     unittest.main()
