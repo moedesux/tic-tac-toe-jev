@@ -119,7 +119,7 @@ app = FastAPI(
 )
 
 
-def get_command_processor(request: Request) -> PlayerCommandProcessor:
+async def get_command_processor(request: Request) -> PlayerCommandProcessor:
     """Return the application-lifetime Player Command processor."""
     processor = getattr(request.app.state, "command_processor", None)
     if processor is None:
@@ -283,7 +283,6 @@ async def make_move(move: MoveCreate):
 async def process_game_command(
     request: PlayerCommandRequest,
     processor: Annotated[PlayerCommandProcessor, Depends(get_command_processor)],
-    session: Annotated[GameSession, Depends(get_game_session)],
 ):
     """Interpret and execute one Natural-Language Control in process."""
     return await processor.process(request.control, None)

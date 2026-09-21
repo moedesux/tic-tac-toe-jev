@@ -5,7 +5,7 @@ import unittest
 import httpx
 
 from backend.game_session import GameSession, NoGameError
-from backend.main import app, get_command_processor, get_game_session
+from backend.main import app, get_command_processor
 from backend.models import CommandIntent
 from backend.player_command import (
     CommandInterpretation,
@@ -21,8 +21,10 @@ class GameCommandApiTests(unittest.IsolatedAsyncioTestCase):
             CommandInterpretation(CommandIntent.START_GAME, confidence=0.97)
         )
         self.processor = PlayerCommandProcessor(self.interpreter, self.session)
-        app.dependency_overrides[get_game_session] = lambda: self.session
-        app.dependency_overrides[get_command_processor] = lambda: self.processor
+        app.dependency_overrides[get_command_processor] = self._get_processor
+
+    async def _get_processor(self) -> PlayerCommandProcessor:
+        return self.processor
 
     def tearDown(self) -> None:
         app.dependency_overrides.clear()
@@ -62,7 +64,7 @@ class GameCommandApiTests(unittest.IsolatedAsyncioTestCase):
             CommandInterpretation(CommandIntent.GREETING, confidence=0.95)
         )
         self.processor = PlayerCommandProcessor(self.interpreter, self.session)
-        app.dependency_overrides[get_command_processor] = lambda: self.processor
+        app.dependency_overrides[get_command_processor] = self._get_processor
 
         async with self.client() as client:
             response = await client.post(
