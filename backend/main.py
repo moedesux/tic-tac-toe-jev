@@ -3,18 +3,16 @@ FastAPI application for Tic-Tac-Toe game.
 Provides REST API endpoints for single game operations.
 """
 
-import asyncio
 import json
 import logging
 import os
-import threading
 import time
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
-import httpx
 import torch
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -58,40 +56,6 @@ from config.config import get_backend_config, get_voice_config
 # Module-level logger
 logger = logging.getLogger(__name__)
 
-# Module-level singleton for the voice orchestrator
-# Initialized lazily on first /api/voice/command request
-_orchestrator = None
-_slm_client = None
-_game_interface = None
-
-
-def _get_orchestrator():
-    """Lazily initialize and return the voice orchestrator singleton."""
-    global _orchestrator, _slm_client, _game_interface
-
-    if _orchestrator is not None:
-        return _orchestrator
-
-    with _orchestrator_lock:
-        # Double-check after acquiring lock (another thread may have initialized)
-        if _orchestrator is not None:
-            return _orchestrator
-
-        from voice_game_interface import VoiceGameInterface
-        from voice_game_orchestrator import SLMClient, TextOrchestrator
-
-        model_name = get_voice_config().slm_model_name
-        api_key = None  # Empty for local llama.cpp server
-        port = None  # Uses config value (8080)
-
-        _slm_client = SLMClient(model_name, api_key=api_key, port=port)
-        _game_interface = VoiceGameInterface()
-        _orchestrator = TextOrchestrator(_slm_client, _game_interface)
-
-        logger.info("Voice orchestrator initialized with model: %s", model_name)
-        return _orchestrator
-
-
 # Hardcoded static file paths (from [paths] section in backend.conf)
 STATIC_MOUNT_POINT = "/static"
 STATIC_DIRECTORY = Path(__file__).parent.parent / "frontend" / "static"
@@ -99,7 +63,6 @@ STATIC_DIRECTORY = Path(__file__).parent.parent / "frontend" / "static"
 
 # Single authoritative in-process game boundary.
 _game_session = GameSession()
-_orchestrator_lock = threading.Lock()
 
 
 def get_game_session() -> GameSession:
@@ -197,31 +160,6 @@ async def gpu_health_check():
             "vulkan_available": False,
             "device": "unknown"
         }
-
-
-@app.get("/api/health/slm")
-async def slm_health_check():
-    """Proxy SLM health check through backend to avoid CORS issues."""
-    # Detect GPU availability — SLM runs on same hardware as this process
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif hasattr(torch.backends, "vulkan"):
-        if torch.backends.vulkan.is_available():
-            device = "vulkan"
-    
-    vc = get_voice_config()
-    slm_url = f"http://{vc.slm_host}:{vc.slm_port}"
-    async with httpx.AsyncClient(http2=False, timeout=5.0) as client:
-        try:
-            resp = await client.get(f"{slm_url}/v1/models")
-            if resp.status_code == 200:
-                data = resp.json()
-                model_name = data.get("data", [{}])[0].get("id", "unknown") if data.get("data") else "unknown"
-                return {"status": "up", "service": "SLM", "model": model_name, "device": device}
-            return {"status": "down", "service": "SLM", "error": f"HTTP {resp.status_code}", "device": device}
-        except httpx.RequestError:
-            return {"status": "down", "service": "SLM", "error": "Cannot reach SLM server", "device": device}
 
 
 @app.get("/api/health/tts")
@@ -349,145 +287,6 @@ async def process_game_command(
 
 # Serve static files
 app.mount(STATIC_MOUNT_POINT, StaticFiles(directory=STATIC_DIRECTORY), name="static")
-
-
-# ---------------------------------------------------------------------------
-# Config Endpoints
-# ---------------------------------------------------------------------------
-class TemplatesResponse(BaseModel):
-    """Response body for templates endpoint."""
-
-    templates: dict[str, str]
-
-
-@app.get("/api/config/templates", response_model=TemplatesResponse)
-async def get_templates():
-    """Return voice game response templates from config.
-
-    This endpoint serves the same templates used by the voice orchestrator,
-    preventing duplication between frontend and backend.
-    """
-    from config.voice_game_config import SUCCESS_TEMPLATES
-
-    return TemplatesResponse(templates=SUCCESS_TEMPLATES)
-
-
-# ---------------------------------------------------------------------------
-# Voice Command Endpoint — Frontend → SLM Pipeline
-# ---------------------------------------------------------------------------
-class VoiceCommandRequest(BaseModel):
-    """Request body for voice command endpoint."""
-
-    command: str = Field(..., max_length=500)
-    gameId: Optional[str] = None
-
-
-class VoiceCommandResponse(BaseModel):
-    """Response body for voice command endpoint."""
-
-    success: bool
-    response: str
-    function: str
-    arguments: dict
-
-
-@app.post("/api/voice/command", response_model=VoiceCommandResponse)
-async def voice_command(request: VoiceCommandRequest):
-    """Handle voice command from frontend via SLM pipeline.
-
-    Routes user text through the SLM (Gemma-4) for intent parsing,
-    then executes the resulting game action via the orchestrator.
-
-    Request body:
-        command: User's spoken/transcribed text
-        gameId:  Optional game ID (not used — backend manages state globally)
-
-    Response:
-        success: Whether the command was processed
-        response: Bot's reply message
-        function: The tool/function name the SLM selected
-        arguments: Parsed arguments for the selected function
-    """
-    command = request.command.strip()
-
-    if not command:
-        return VoiceCommandResponse(
-            success=False,
-            response="Please say something or type a command.",
-            function="",
-            arguments={},
-        )
-
-    # Initialize orchestrator on first request (lazy init)
-    try:
-        orchestrator = _get_orchestrator()
-    except Exception as e:
-        logger.error("Failed to initialize orchestrator: %s", e)
-        return VoiceCommandResponse(
-            success=False,
-            response="Voice service unavailable. Please try again.",
-            function="",
-            arguments={},
-        )
-
-    # Ensure a game exists and orchestrator knows about it through the shared
-    # session boundary used by the REST handlers.
-    game = await get_game_session().ensure_created()
-
-    # Sync orchestrator's game_started flag with backend state.
-    orchestrator.game_started = not game.gameOver
-
-    # Sync VoiceGameInterface's game_id so make_move works.
-    if not orchestrator.game.game_id:
-        orchestrator.game.game_id = game.gameId
-
-    # Run the synchronous orchestrator in a thread pool to avoid blocking
-    def _process():
-        return orchestrator.process_utterance(command)
-
-    try:
-        response_text = await asyncio.to_thread(_process)
-    except Exception as e:
-        logger.error("Orchestrator processing failed: %s", e, exc_info=True)
-        return VoiceCommandResponse(
-            success=False,
-            response="An error occurred. Please try again.",
-            function="",
-            arguments={},
-        )
-
-    # Extract the last tool call from conversation history
-    last_function = ""
-    last_arguments: dict = {}
-
-    for msg in reversed(orchestrator.conversation_history):
-        if msg.get("role") == "assistant" and "tool_calls" in msg:
-            tool_call = msg["tool_calls"][0]
-            last_function = tool_call["function"]["name"]
-
-            args_raw = tool_call["function"]["arguments"]
-            if isinstance(args_raw, str):
-                try:
-                    last_arguments = json.loads(args_raw)
-                except json.JSONDecodeError:
-                    last_arguments = {}
-            elif isinstance(args_raw, dict):
-                last_arguments = args_raw
-            else:
-                last_arguments = {}
-
-            break
-
-    # Handle None response (goodbye / exit)
-    if response_text is None:
-        response_text = "Thanks for playing! Goodbye!"
-
-    return VoiceCommandResponse(
-        success=True,
-        response=response_text,
-        function=last_function,
-        arguments=last_arguments,
-    )
 
 
 # ============================================================================

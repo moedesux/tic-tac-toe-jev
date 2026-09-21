@@ -33,7 +33,6 @@ async function fetch(url, options = {}) {
   if (url === '/api/game/depart') return {ok: true, status: 200, json: async () => ({message: 'Thanks for playing! Goodbye!'})};
   if (url === '/api/health/typesafe') return {ok: true, status: 200, json: async () => ({status: typeSafeStatus})};
   if (url.startsWith('/api/health')) return {ok: true, status: 200, json: async () => ({status: 'healthy'})};
-  if (url === '/api/config/templates') return {ok: true, status: 200, json: async () => ({templates: {}})};
   if (url === '/api/voice/transcribe') return {ok: true, status: 200, json: async () => ({text: 'move center'})};
   if (url === '/api/voice/synthesize') return {ok: true, status: 200, json: async () => ({audio: ''})};
   throw new Error(`Unexpected fetch: ${url}`);

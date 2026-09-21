@@ -12,7 +12,7 @@ let currentGameData = null;
 
 // Mutex guard to prevent double-submission of voice commands
 let isProcessing = false;
-const VOICE_COMMAND_TIMEOUT = 30000; // 30 second timeout for SLM responses (browser-friendly)
+const VOICE_COMMAND_TIMEOUT = 30000; // 30 second timeout for remote interpretation
 
 // Singleton AudioContext for TTS playback (avoids creating one per response)
 let sharedAudioContext = null;
@@ -196,33 +196,6 @@ async function departGame() {
 // Voice Command Functions - Defined once (not on every page load)
 // ============================================================================
 
-// Voice command response templates — loaded from backend to avoid duplication
-let RESPONSE_TEMPLATES = {};
-
-// Load response templates from backend API
-async function loadTemplates() {
-    try {
-        const res = await fetch('/api/config/templates');
-        if (res.ok) {
-            const data = await res.json();
-            RESPONSE_TEMPLATES = data.templates || {};
-        }
-    } catch (e) {
-        console.warn('[Templates] Failed to load from backend, using defaults:', e);
-        // Fallback defaults
-        RESPONSE_TEMPLATES = {
-            start_game: "New game started! You are player X. Your turn to place a mark.",
-            get_board: "{board_description}",
-            get_status: "{status_description}",
-            place_move: "{move_result}",
-            greeting: "Welcome to Tic-Tac-Toe! Say 'start' to begin a new game.",
-            goodbye: "Thanks for playing! Goodbye!",
-            thank_you: "You're welcome! Is there anything else I can help with?",
-            intent_unclear: "I didn't quite understand that. I can help you start a game, place moves, check the board, or check the status."
-        };
-    }
-}
-
 // Toast notification system — replaces blocking alert()
 function showToast(message, type = 'info') {
     let container = document.querySelector('.toast-container');
@@ -374,7 +347,7 @@ function getPositionDescription(row, col) {
     return POSITION_NAMES[position];
 }
 
-// Execute voice command via SLM pipeline
+// Execute a Natural-Language Control through the shared command endpoint.
 async function executeVoiceCommand(functionName, cmdArgs) {
     // Only execute if voice panel exists
     const voicePanel = document.querySelector('.voice-panel');
@@ -934,6 +907,4 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Load templates from backend
-    loadTemplates();
 });

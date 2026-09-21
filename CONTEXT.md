@@ -30,7 +30,7 @@ _Avoid_: Conversation history, chat context, incomplete tool call
 
 **Natural-Language Control**:
 A player command expressed as typed or transcribed language and requiring command interpretation.
-_Avoid_: SLM command, voice pipeline command
+_Avoid_: Provider-specific command, voice pipeline command
 
 **Structured Control**:
 A button or other interface element whose command intent and values are already known and therefore require no interpretation.

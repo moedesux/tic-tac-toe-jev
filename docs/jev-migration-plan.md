@@ -1,146 +1,63 @@
-# Jev Command Interpretation Migration
+# Jev Command Interpretation Architecture
 
 ## Outcome
 
-Replace the self-hosted generative command interpreter with TypeSafe Jev while retaining local speech recognition, local speech synthesis, the existing shared X/O game, and both browser and standalone voice entry points. Application code owns game rules, state transitions, dialogue state, uncertainty policy, and response text. Jev supplies bounded typed judgments about natural-language commands.
+TypeSafe Jev supplies bounded, typed judgments for Natural-Language Controls.
+Application code owns game rules, state transitions, Pending Commands,
+confidence policy, and deterministic response text. Local ASR and TTS remain
+available for speech input and output.
 
-Production has one inference path and no compatibility flag. Historical Git commits remain unchanged. The architecture decision record is the only current file allowed to name retired technologies.
+Production has one command-interpretation path. Structured Controls bypass Jev
+and call game operations directly, so visual gameplay remains available when
+TypeSafe is unavailable.
 
-## Command interpretation
+## Command path
 
-One Jev request evaluates structured state containing:
+`PlayerCommandProcessor.process` is the public command boundary. It sends the
+utterance, board, current mark, game status, and optional Pending Command to the
+Jev adapter in one batched request. Only domain interpretation values leave the
+adapter; TypeSafe SDK objects remain inside
+`backend/jev_command_interpreter.py`.
 
-- the current utterance;
-- the board, current mark, and game status;
-- an optional pending command.
+The processor applies the calibrated confidence policy, updates Pending Command
+state, invokes `GameSession` in process, and returns a domain `CommandResult`.
+FastAPI owns the TypeSafe client for its application lifetime.
 
-The request batches independent judgments:
+The browser and standalone microphone client both use
+`POST /api/game/command`. The standalone client is a separate process and uses
+`backend_command_client.py`; browser Structured Controls call the direct game
+endpoints.
 
-- a Choice among greeting, start game, show board, place move, show status, thanks, goodbye, and unclear;
-- a Noul indicating whether a position was stated;
-- a Choice among the nine board positions;
-- a Noul detecting an initial move requested with a new game;
-- when applicable, Nouls for pending-command cancellation, affirmation, and rejection.
+## Dialogue and confidence
 
-The board allows uniquely identifying relative references. Jev reports the intended position even when it is occupied; deterministic game code remains authoritative for legality. It never chooses a strategic move for a player.
+A Pending Command either lacks a Move Position or holds a proposed position
+awaiting confirmation. Completion, cancellation, confident replacement, a new
+game, game completion, or departure clears it. Social and unclear follow-ups
+preserve it.
 
-## Dialogue behavior
+Commands normally execute one action. Starting a game with an initial move is
+the single bounded composition. Read-only/social commands, moves, existing-game
+resets, and position selection use separate confidence gates recorded in
+`docs/calibration/jev-1.13.0.json`.
 
-There is no rolling transcript or provider-shaped message history. The backend stores an explicit pending command alongside the one shared game session.
+## Operations
 
-A pending command may:
+Server credentials come from `TYPESAFE_API_KEY`; the validated production model
+comes from `TYPESAFE_DEFAULT_MODEL`. `GET /api/health/typesafe` is passive and
+reports cached outcomes from real command requests without making provider
+calls.
 
-- lack a position; or
-- hold a proposed position awaiting confirmation.
-
-It is cleared by completion, cancellation, a confident replacement command, a new game, game completion, or departure. An unclear follow-up does not clear it. Social commands leave it intact.
-
-Commands normally execute one action. The only compound behavior is starting a game and placing its requested initial move. If that move lacks a precise position, the game starts and the move becomes pending. Other compounds are clarified and handled one action at a time.
-
-## Confidence policy
-
-Use separate gates for:
-
-- read-only and social commands;
-- state-changing moves;
-- resetting an existing game;
-- position selection.
-
-High-confidence judgments execute. Medium-confidence state changes become pending confirmations. Low-confidence judgments clarify without acting. Actual thresholds are selected from live Jev evaluation results rather than copied from documentation.
-
-## Module design
-
-Create a deep asynchronous command module with a small `process` interface. It hides question construction, Jev result translation, confidence policy, pending transitions, command execution, and deterministic response construction.
-
-Place an internal command-interpreter seam behind that module:
-
-- a Jev adapter uses `AsyncTypeSafeClient` in production;
-- a deterministic fake adapter supports automated tests.
-
-Only domain interpretation types cross the seam. TypeSafe SDK response objects remain inside the Jev adapter.
-
-FastAPI owns the TypeSafe client for its application lifetime. The command module invokes in-process game operations; it never calls the application's own HTTP routes. The standalone microphone program is a separate process and therefore uses a small backend HTTP adapter.
-
-## HTTP interface
-
-Replace `POST /api/voice/command` with `POST /api/game/command`. A successful response has domain fields:
-
-```json
-{
-  "success": true,
-  "message": "You placed your mark at middle right.",
-  "intent": "place_move",
-  "position": "middle_right",
-  "confidence": 0.94,
-  "clarification_required": false
-}
-```
-
-For the bounded start-plus-move composition, `intent` remains `start_game` and `position` identifies the applied initial move.
-
-Transport, exhausted rate limiting, missing credentials, and unavailable-model failures return non-success HTTP statuses. Successful uncertain judgments return HTTP 200 with `clarification_required: true`. Structured buttons call game operations directly and remain usable when TypeSafe is unavailable.
-
-`GET /api/health/typesafe` performs no external call. It reports missing configuration or the cached outcome of real command requests: configured/unverified, healthy, degraded, or unavailable. Frontend polling therefore consumes no TypeSafe usage.
-
-Command failures use stable public mappings: missing configuration is `503
-typesafe_not_configured`; malformed provider requests are `400
-typesafe_bad_request`; authentication or permission failures are `401
-typesafe_authentication_failed`; rate limits are `429 typesafe_rate_limited`;
-transport failures are `502 typesafe_transport_failed`; timeouts are `504
-typesafe_timeout`; overload is `503 typesafe_overloaded`; and unavailable models
-or services are `503 typesafe_service_unavailable`. Malformed provider responses
-use `502 typesafe_malformed_response`. Responses contain only the code and a
-request identifier; credentials, utterances, and provider bodies are never
-logged. A successfully returned uncertain judgment remains `200` with
-`clarification_required`.
-
-## Configuration
-
-Use server environment variables:
-
-- `TYPESAFE_API_KEY`;
-- `TYPESAFE_DEFAULT_MODEL`.
-
-Evaluate with the current alias, then pin the validated model version for production. Secrets never enter committed configuration, frontend code, responses, or logs.
-
-## File migration
-
-| Area | Change |
-| --- | --- |
-| `backend/main.py` | Replace orchestrator initialization and voice command route; own the async client lifecycle, shared game session, pending state, command route, passive TypeSafe health, and error mapping. |
-| `backend/game.py` | Retain pure rules; expose in-process operations needed by REST and command handling without adding inference concerns. |
-| `backend/models.py` | Add domain command request/response and pending-state models; remove provider-shaped vocabulary. |
-| New backend command module | Implement the deep command-processing interface and domain policy. |
-| New Jev adapter | Build TypeSafe questions and translate SDK answers into domain interpretations. |
-| `voice_game_orchestrator.py` | Delete. |
-| `voice_game_interface.py` | Delete; replace only the standalone caller's legitimate HTTP needs with a small backend adapter. |
-| `voice_tic_tac_toe.py` | Remove model client arguments and local inference; send transcripts to `/api/game/command`. |
-| `config/voice.conf` | Remove the inference-server section; retain ASR, TTS, backend, and audio configuration. |
-| `config/config.py` | Remove inference-server properties and retired game-prompt imports. |
-| `config/voice_game_config.py` | Remove prompts, tool schemas, slot metadata, and history-oriented settings; relocate the small amount of surviving domain copy or position vocabulary to its owning module. |
-| `voice_game.sh` | Remove the inference server process, port, health check, PID file, logs, startup, shutdown, status, and model-path handling. |
-| `download_models.sh` | Download and verify only the retained ASR and TTS models. |
-| `requirements.txt` | Remove the OpenAI client and add the supported TypeSafe Python SDK; retain other dependencies only where still imported. |
-| `frontend/static/app.js` | Use the new command route and response shape, bypass Jev for structured controls, replace the health badge, and handle non-success statuses. |
-| `frontend/index.html` | Rename inference health/status wording. |
-| Old model-call tests | Delete and replace with command-module tests through the fake adapter. |
-| Integration tests | Exercise pending state, confidence behavior, start-plus-move, board-relative language, failure mapping, and both entry points. |
-| `data/*.jsonl` and training generator | Delete. Preserve only curated provider-neutral behavior fixtures. |
-| `README.md`, `AGENTS.md` | Rewrite commands, setup, architecture, troubleshooting, logs, dependencies, and terminology. |
-| `architecture.drawio`, rendered image | Redraw around the Jev adapter and deep command module. |
+`voice_game.sh` manages only the FastAPI backend. `download_models.sh` downloads
+and verifies only the retained Qwen ASR and Kokoro TTS assets.
 
 ## Verification
 
-Completion requires:
+- Deterministic command behavior uses the fake interpreter boundary.
+- Curated provider-neutral cases live in `fixtures/command_behaviors.jsonl`.
+- Browser and standalone smoke tests exercise the common command endpoint.
+- Repository standards audit the completed runtime cutover.
+- Credential-gated evaluation uses `scripts/evaluate_jev_fixtures.py`.
 
-1. Deterministic tests through the fake interpreter adapter.
-2. Correct intent and position for all curated canonical cases.
-3. No execution for ambiguous, irrelevant, or insufficiently confident state changes.
-4. Coverage of pending creation, completion, confirmation, rejection, cancellation, replacement, and clearing.
-5. Coverage of the bounded start-plus-move composition.
-6. Credential-gated live Jev evaluation and threshold calibration.
-7. Browser and standalone smoke tests through the common backend command route.
-8. Updated architecture sources and rendered documentation.
-9. A current-worktree audit covering tracked and ignored files, with the ADR as the only historical-reference allowlist.
-
-Ignored runtime cleanup includes stale inference logs, downloaded model files, and PID files. Deletion happens only during the authorized implementation phase.
+The behavior-to-test mapping is maintained in
+`docs/acceptance-test-matrix.md`. Historical architectural rationale is retained
+only in `docs/adr/0001-use-jev-for-command-interpretation.md`.
