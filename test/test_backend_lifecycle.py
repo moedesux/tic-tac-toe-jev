@@ -3,7 +3,6 @@ import os
 import shutil
 import socket
 import subprocess
-import time
 from pathlib import Path
 from urllib.request import urlopen
 
