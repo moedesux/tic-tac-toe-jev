@@ -52,6 +52,13 @@ class RepositoryStandardsTests(unittest.TestCase):
             cached = subprocess.run(command, capture_output=True, text=True, check=False)
             self.assertEqual(1, cached.returncode)
             self.assertIn("FAIL: __pycache__/" + retired_file, cached.stdout)
+            (cache / retired_file).unlink()
+            with tempfile.TemporaryDirectory(prefix=retired_name + "-") as external:
+                (root / "assets").symlink_to(external, target_is_directory=True)
+                linked = subprocess.run(command, capture_output=True, text=True, check=False)
+                self.assertEqual(1, linked.returncode)
+                self.assertIn("FAIL: assets", linked.stdout)
+                self.assertNotIn(external, linked.stdout)
 
     def test_game_session_private_helpers_stay_inside_game_session_module(self) -> None:
         violations: list[str] = []

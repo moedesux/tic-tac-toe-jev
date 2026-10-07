@@ -39,8 +39,12 @@ for directory, directories, filenames in os.walk(root, followlinks=False):
         if name in vendor:
             directories.remove(name)
             excluded += 1
-        elif retired.search(str(relative)) or retired.search(str(relative).replace("_", " ")):
-            violations.add(str(relative))
+        else:
+            if retired.search(str(relative)) or retired.search(str(relative).replace("_", " ")):
+                violations.add(str(relative))
+            path = root / relative
+            if path.is_symlink() and retired.search(os.readlink(path)):
+                violations.add(str(relative))
     for name in filenames:
         path = Path(directory) / name
         relative = path.relative_to(root)
