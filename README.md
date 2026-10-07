@@ -1,18 +1,103 @@
-# Voice Tic-Tac-Toe
+# Voice tic-tac-toe
 
-Voice-controlled tic-tac-toe with a FastAPI game backend, TypeSafe Jev natural-language controls, local Qwen ASR, and local Kokoro TTS.
+Play a shared-turn game through browser buttons, typed Player Commands, or a standalone microphone client. Accepted moves alternate X and O. There is no automated opponent.
 
-## Run
+TypeSafe Jev interprets Natural-Language Controls. The command module owns confidence policy, Pending Commands, and response text. A shared `GameSession` owns game rules and state. Structured Controls bypass interpretation. Qwen ASR and Kokoro TTS run locally.
 
-Install dependencies with `uv sync` (or `uv pip install -r requirements.txt`), download the retained speech models with `./download_models.sh`, then start the backend with `./voice_game.sh start`. The browser is served at `http://localhost:8002`.
+## Set up the server
 
-Natural-language controls use `POST /api/game/command` and require `TYPESAFE_API_KEY`. Structured game controls remain usable without that credential. The standalone client (`voice_tic_tac_toe.py`) sends transcripts to the same endpoint.
-
-## Verification
+Run all commands from the repository root. Install Python 3.12 or later, `uv`, Node.js for browser controller tests, and system audio support. Linux microphone playback needs PortAudio, and Kokoro pronunciation needs `espeak-ng`.
 
 ```bash
-uv run pytest -q
-uv run python scripts/evaluate_jev_fixtures.py
+uv venv
+uv pip install -r requirements.txt
+uv run python scripts/check_dev_environment.py
 ```
 
-The fixture evaluator requires a TypeSafe credential and network access; deterministic tests use the fake command boundary.
+This repository uses `requirements.txt`, not a project manifest. `transformers==4.57.6` is pinned for the retained ASR integration. Install the model download CLI into the same environment.
+
+```bash
+uv pip install huggingface-hub
+uv run ./download_models.sh
+```
+
+The downloader fetches `Qwen/Qwen3-ASR-0.6B` into `models/Qwen3-ASR-0.6B`, checks its `config.json` and nonempty safetensors weights, and downloads the nonempty Kokoro model and voices files. Speech assets remain ignored by Git.
+
+For Natural-Language Controls, set `TYPESAFE_API_KEY` only on the server. Keep credentials out of browser code, screenshots, logs, and commits. A repository `.env` can contain your private credential and `TYPESAFE_DEFAULT_MODEL=jev-1.13.0`. The production adapter defaults to this validated model if the model variable is absent. An explicit model override changes the calibrated deployment.
+
+`voice_game.sh` inherits exported shell variables. It does not load `.env` itself. To load `.env` with `uv`, start it as follows.
+
+```bash
+uv run --env-file .env ./voice_game.sh start
+```
+
+Without a credential, start with `./voice_game.sh start`. Structured Controls remain available. Natural-Language Controls return a configuration error.
+
+## Play in the browser
+
+Open `http://localhost:8002`. **New Game**, board cells, and **Quit** are Structured Controls. Typed text and browser speech transcripts use `POST /api/game/command`.
+
+Browser voice input uses the browser's speech recognition when available and falls back to local ASR through `POST /api/voice/transcribe`. Speech output uses local Kokoro through `POST /api/voice/synthesize`. Browser microphone support and permission depend on the browser and a secure context, including localhost.
+
+Try "start a game", "place a mark", and "center" to complete a Pending Command. The server returns a domain command result with intent, position, confidence, clarification status, response text, and game state.
+
+## Play through the standalone client
+
+Start the backend first. In another terminal, run one of these commands.
+
+```bash
+uv run python voice_tic_tac_toe.py
+uv run python voice_tic_tac_toe.py --simulation
+```
+
+Microphone mode records audio between Enter presses, transcribes through local Qwen ASR, sends the transcript through `BackendCommandClient` to the same command endpoint, and speaks the response through local Kokoro. Simulation mode accepts typed transcripts and retains TTS. The client does not own an interpretation service or a separate game. Use `--help` for speech model and device overrides.
+
+## Operate the backend
+
+```bash
+./voice_game.sh status
+./voice_game.sh restart
+./voice_game.sh stop
+```
+
+The script manages one backend process using `.backend.pid`. `status` checks process liveness, not HTTP readiness. `start` returns before the server is ready. Backend output goes to `logs/backend.log`. Run commands from the root because configuration and model paths are relative to the working directory.
+
+`config/backend.conf` supplies the startup port, API title, and version. Startup binds `0.0.0.0`. `config/voice.conf` supplies speech paths, TTS enablement, voice settings, and the standalone backend URL. Keep its `api_gateway.base_url` aligned with the backend port. Some fields are reference settings rather than active options. The server ignores the configured host, and TTS returns its actual synthesis sample rate.
+
+```bash
+curl --fail http://localhost:8002/api/health
+curl --fail http://localhost:8002/api/health/typesafe
+curl --fail http://localhost:8002/api/health/asr
+curl --fail http://localhost:8002/api/health/tts
+curl --fail http://localhost:8002/api/health/gpu
+tail -n 50 logs/backend.log
+```
+
+TypeSafe health is passive. It reports configuration and cached command outcomes as `unconfigured`, `unverified`, `healthy`, `degraded`, or `unavailable`, without provider usage. ASR and TTS health can load local models. A successful HTTP health response can contain a degraded or unavailable speech status. GPU health reports availability rather than verifying inference. Command logs contain identifiers and metadata rather than utterances or credentials.
+
+## Verify the architecture
+
+```bash
+uv run pytest -q test/test_player_command.py test/test_jev_command_interpreter.py
+uv run pytest -q test/test_repository_standards.py
+uv run pytest -q
+uv run python scripts/audit_hard_cutover.py --root "$PWD"
+uv run --env-file .env python scripts/evaluate_jev_fixtures.py
+```
+
+The full deterministic suite uses fake interpretation and speech boundaries. It includes the Node.js browser controller smoke and standalone HTTP adapter tests. These verify contracts, not provider access, microphone hardware, or real speech inference. The fixture evaluator requires credentials and network access, reports sanitized aggregate results, and skips explicitly without a credential.
+
+For final live verification, drive the running browser through a Structured Control game and a Natural-Language Control game. Check a missing Move Position and its follow-up, and confirm TypeSafe health changes after successful commands. Run standalone simulation against that same backend, then verify microphone input and audible TTS on a machine with audio devices. Record hardware and service limitations separately. See the [acceptance matrix](docs/acceptance-test-matrix.md) and [dated verification evidence](docs/cutover-verification.md).
+
+## Troubleshoot failures
+
+- If startup reports a running process but HTTP fails, inspect `logs/backend.log` and check the configured port. Stop and start after fixing dependencies or configuration.
+- If Natural-Language Controls fail, check credential availability in the backend environment and passive TypeSafe health. Restart after changing environment variables. Missing credentials return 503, rejected credentials return 401, rate limits return 429, overload returns 503, transport failures return 502, and timeouts return 504. Structured Controls remain usable.
+- If commands clarify instead of moving, supply the missing Move Position or confirm the proposed position. Application code validates occupied cells and enforces the confidence policy.
+- If speech health is degraded, verify the downloaded assets and declared dependencies. ASR needs model configuration and weights. TTS needs both the model and voices file, pronunciation support, and `enabled = true`.
+- If standalone simulation cannot speak, check local audio output. Simulation skips the microphone and ASR, but still loads TTS unless disabled in `config/voice.conf`.
+- If the browser microphone fails, check permission and speech recognition support. Typed commands and Structured Controls provide alternate input.
+
+The [architecture explanation](docs/jev-migration-plan.md) describes module ownership. The editable [diagram](architecture.drawio) and its rendered image show both entry points.
+
+![Jev command architecture](assets/architecture.png)

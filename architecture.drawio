@@ -1,1 +1,67 @@
-<mxfile host="app.diagrams.net"><diagram name="Architecture"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="backend" value="FastAPI backend&#xa;/api/game + /api/game/command&#xa;shared GameSession + Jev client" vertex="1" parent="1"><mxGeometry x="300" y="100" width="240" height="100" as="geometry"/></mxCell><mxCell id="browser" value="Browser controls" vertex="1" parent="1"><mxGeometry x="40" y="100" width="160" height="60" as="geometry"/></mxCell><mxCell id="voice" value="Standalone voice client&#xa;local ASR → backend → local TTS" vertex="1" parent="1"><mxGeometry x="40" y="240" width="220" height="70" as="geometry"/></mxCell><mxCell id="e1" edge="1" parent="1" source="browser" target="backend"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e2" edge="1" parent="1" source="voice" target="backend"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>
+<mxfile host="app.diagrams.net">
+  <diagram name="Jev command architecture">
+    <mxGraphModel grid="1" page="1" pageWidth="1500" pageHeight="700">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="browser" value="Browser entry point&#10;Structured Controls + Natural-Language Controls" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="20" y="60" width="240" height="115" />
+        </mxCell>
+        <mxCell id="standalone" value="Standalone microphone entry point&#10;local Qwen ASR + Kokoro TTS&#10;BackendCommandClient" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="20" y="260" width="240" height="115" />
+        </mxCell>
+        <mxCell id="api" value="FastAPI routes&#10;/api/game/command&#10;direct game + speech endpoints" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="300" y="60" width="240" height="115" />
+        </mxCell>
+        <mxCell id="processor" value="Player Command module&#10;PlayerCommandProcessor&#10;confidence policy + response text" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="580" y="60" width="240" height="115" />
+        </mxCell>
+        <mxCell id="adapter" value="Jev command adapter&#10;JevCommandInterpreter&#10;batched typed judgments" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="860" y="60" width="240" height="115" />
+        </mxCell>
+        <mxCell id="remote" value="TypeSafe Jev 1.13.0&#10;server-side credentials&#10;application-lifetime SDK client" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="1140" y="60" width="240" height="115" />
+        </mxCell>
+        <mxCell id="session" value="Shared GameSession&#10;one async lock&#10;game rules + board + current mark" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="580" y="310" width="240" height="115" />
+        </mxCell>
+        <mxCell id="pending" value="Pending Command&#10;missing Move Position&#10;or proposed position confirmation" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="860" y="310" width="240" height="115" />
+        </mxCell>
+        <mxCell id="speech" value="Retained local speech&#10;Qwen ASR + Kokoro TTS&#10;/api/voice/transcribe + synthesize" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e8f0fe;strokeColor=#475569;">
+          <mxGeometry as="geometry" x="300" y="460" width="240" height="115" />
+        </mxCell>
+        <mxCell id="e0" source="browser" target="api" value="HTTP" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e1" source="standalone" target="api" value="transcript HTTP" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e2" source="api" target="processor" value="Natural-Language Control" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e3" source="processor" target="adapter" value="utterance + state + pending" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e4" source="adapter" target="remote" value="one batched request" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e5" source="processor" target="session" value="in-process game operations" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e6" source="session" target="pending" value="owns state" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e7" source="api" target="session" value="Structured Controls" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e8" source="browser" target="speech" value="speech HTTP" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e9" source="speech" target="api" value="local speech engines" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

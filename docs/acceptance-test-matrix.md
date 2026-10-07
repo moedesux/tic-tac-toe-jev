@@ -1,4 +1,4 @@
-# Command Acceptance Test Matrix
+# Command acceptance test matrix
 
 This matrix is the index from command behavior to deterministic evidence. Update
 it whenever command acceptance criteria or test ownership changes.
@@ -65,3 +65,24 @@ reference presence/uniqueness use `0.40`, and pending follow-ups use `0.75`.
 Three consecutive pinned evaluations passed with zero canonical, safety, or
 composed behavior failures. The final sanitized judgment distributions are in
 `docs/calibration/jev-1.13.0.json`.
+
+## Documentation and final cutover acceptance
+
+Issue #12 also requires evidence beyond deterministic command contracts.
+
+| Acceptance criterion | Verification |
+| --- | --- |
+| Active documentation uses the glossary and describes both entry points, Structured Controls, and local speech | Review `README.md` and `docs/jev-migration-plan.md` against `CONTEXT.md` and executable entry points |
+| Setup uses server-side credentials and the validated model | Compare setup instructions with application lifespan and `open_jev_command_interpreter`; live evaluation reports `jev-1.13.0` |
+| Operations and troubleshooting match executable behavior | Compare commands with `voice_game.sh`, `download_models.sh`, configuration accessors, CLI help, health routes, and `FAILURE_MAPPINGS` |
+| Editable and rendered architecture show command ownership and Pending Command | Run `scripts/render_architecture.py` and inspect `assets/architecture.png` |
+| Tracked and ignored project artifacts contain no retired runtime | Run `scripts/audit_hard_cutover.py --root "$PWD"` on every active worktree; `test_retired_command_interpreter_artifacts_are_absent` |
+| Only the accepted decision record names retired technologies in project-owned text | Same audit, with the explicit dependency and binary scope described in the architecture explanation |
+| Audit detects ignored artifacts and preserves the approved decision record | `test_cutover_audit_detects_ignored_artifacts_without_exposing_content` |
+| Deterministic tests and live entry points pass | Full `uv run pytest -q`; real browser game, standalone client against running backend, and separate local speech inference checks |
+
+Record live service and hardware checks separately. Browser controller fakes,
+standalone adapter fakes, and speech endpoint fakes cannot replace live checks.
+Standalone simulation with TTS disabled establishes command transport but does
+not establish audio playback. A TTS WAV round-trip through ASR establishes local
+speech inference but does not establish microphone capture or audible output.
