@@ -26,4 +26,4 @@ Preconditions: an isolated healthy backend. Full pages also poll local speech se
 
 ## Gotchas
 
-Cells exist only after starting a game. Data positions are zero-based. Board cells ignore clicks after completion; named position buttons can surface an API error instead. Starting a game automatically requests TTS even on the regular page. Record synthesis success or failure separately from the game result. There is no automated opponent. The shipped proof does not exercise the full page or named position buttons.
+Cells exist only after starting a game. Data positions are zero-based. Board cells ignore clicks after completion; named position buttons can surface an API error instead. Starting a game requests TTS when Speak Responses is enabled. The regular page always enables TTS and has no toggle. The full page restores its stored toggle preference. Record synthesis success or failure separately from the game result. There is no automated opponent. The shipped proof does not exercise the full page or named position buttons.
