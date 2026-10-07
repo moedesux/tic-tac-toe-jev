@@ -114,3 +114,19 @@ are separate credential-gated checks, recorded for the parent issue #15.
 | Available failure payload remains inspectable without fabricated response | Provider failure coverage owned by issue #17; the same expandable payload helper renders failure details |
 
 Browser acceptance isolates speech HTTP boundaries explicitly. It does not verify live ASR, TTS, or external provider calls.
+
+## Jev history and responsive layout, issue #19
+
+| Criterion | Deterministic browser evidence |
+| --- | --- |
+| Latest 50 exchanges, closed-panel capture, new-game preservation, refresh reset | `test_history_lifetime_selection_retention_and_layout` |
+| Preserved selection, new indicator, explicit selected-entry eviction | `test_history_lifetime_selection_retention_and_layout` |
+| Clear history and selection, pending response cannot restore cleared entries | `test_history_lifetime_selection_retention_and_layout` |
+| Wide side panel and adjustable width, narrow panel below game without page overflow, readable history and expanded details | `test_history_lifetime_selection_retention_and_layout` |
+| Independent tab histories and shared authoritative game and Pending Command | `test_two_tabs_have_private_history_and_share_game_and_pending` |
+| Command submitted while capability fetch is pending retains its correlated response | `test_command_submitted_during_capability_loading_is_correlated` |
+
+These tests drive production browser controls and command routes with the declared
+TypeSafe SDK recording provider. Speech routes are isolated at their model
+boundary. A separate credential-gated browser run must verify live Jev capture;
+deterministic provider results do not establish service availability.
