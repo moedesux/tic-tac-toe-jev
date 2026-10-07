@@ -28,7 +28,10 @@ real command requests.
 
 A real Chromium browser creates a game through a Structured Control, places X
 at center, submits a typed Natural-Language Control, and observes O at top left
-and the rendered command response. The existing workspace screenshot utility
+and the rendered command response. A second browser flow starts a new game,
+requests a move without a position, verifies no board mutation, supplies
+"center", and verifies the completed move and healthy TypeSafe status.
+The existing workspace screenshot utility
 also runs its three scenarios, including a completed X win, against the live
 command route.
 
@@ -55,8 +58,12 @@ The original untracked screenshot utility is retained as untracked user work.
 Its endpoint, port, terminology, and win sequence are updated for the current
 architecture. It is not included in the documentation commit.
 
-Run the audit again on the original workspace after applying this commit.
-The repository standards test definition changes in this commit so that the
+The final original-workspace audit passes after applying the implementation
+and both review corrections. It inventories 213 project files, checks 86 text
+files, and inventories 126 binary/cache files. Two Git/dependency directories
+are excluded. Sixteen obsolete compiled files are archived outside the
+workspace. The directory-symlink and known retired-file regressions pass.
+The repository standards test definition changes so that the
 accepted decision record is the only project text naming retired technologies.
 The audit scans model text too. Git internals and installed dependency
 environments are excluded, and binary contents are not semantic evidence.
