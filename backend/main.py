@@ -15,7 +15,7 @@ from typing import Annotated
 
 import torch
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -44,6 +44,7 @@ from backend.models import (
     MoveCreate,
     PlayerCommandRequest,
 )
+from backend.jev_diagnostics import capture_exchange, debug_enabled, sanitize
 from backend.player_command import PlayerCommandProcessor
 from backend.typesafe_health import (
     TypeSafeHealthStatus,
@@ -240,6 +241,16 @@ async def depart_game():
     return MessageResponse(message="Thanks for playing! Goodbye!")
 
 
+@app.get("/api/debug/jev")
+async def jev_debug_capability():
+    return {"enabled": debug_enabled()}
+
+
+@app.post("/api/debug/jev/label")
+async def jev_debug_label(request: PlayerCommandRequest):
+    return {"label": sanitize(request.control) if debug_enabled() else None}
+
+
 @app.post("/api/game/command", response_model=CommandResult)
 async def process_game_command(
     request: PlayerCommandRequest,
@@ -249,7 +260,8 @@ async def process_game_command(
     request_id = uuid.uuid4().hex
     started = time.perf_counter()
     try:
-        result = await processor.process(request.control, None)
+        with capture_exchange(debug_enabled()) as exchange:
+            result = await processor.process(request.control, None)
     except TypeSafeOperationalError as error:
         mapping = map_typesafe_error(error)
         if mapping.health_status is TypeSafeHealthStatus.UNAVAILABLE:
@@ -265,10 +277,20 @@ async def process_game_command(
             mapping.code,
             (time.perf_counter() - started) * 1000,
         )
-        raise HTTPException(
-            status_code=mapping.http_status,
-            detail={"code": mapping.code, "request_id": request_id},
-        ) from error
+        detail = {"code": mapping.code, "request_id": request_id}
+        if exchange is not None:
+            return JSONResponse(status_code=mapping.http_status, content={
+                "detail": detail,
+                "jev_exchange": {
+                    "id": request_id,
+                    "status": "failure",
+                    "duration_ms": (time.perf_counter() - started) * 1000,
+                    "request": exchange.request,
+                    "response": None,
+                    "error": {"kind": error.kind.value, "code": mapping.code},
+                },
+            })
+        raise HTTPException(status_code=mapping.http_status, detail=detail) from error
     metadata = getattr(processor, "metadata", {})
     typesafe_health.record(success=True, model=metadata.get("model"))
     usage = metadata.get("usage")
@@ -282,6 +304,16 @@ async def process_game_command(
         usage.get("input_tokens") if isinstance(usage, dict) else None,
         usage.get("output_tokens") if isinstance(usage, dict) else None,
     )
+    if exchange is not None and exchange.request is not None:
+        application = result.model_dump(mode="json")
+        return JSONResponse(content={**application, "jev_exchange": {
+            "id": request_id,
+            "status": "success",
+            "duration_ms": (time.perf_counter() - started) * 1000,
+            "request": exchange.request,
+            "response": exchange.response,
+            "application": {**application, "outcome": result.application_outcome},
+        }})
     return result
 
 

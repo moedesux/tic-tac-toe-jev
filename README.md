@@ -101,3 +101,26 @@ For final live verification, drive the running browser through a Structured Cont
 The [architecture explanation](docs/jev-migration-plan.md) describes module ownership. The editable [diagram](architecture.drawio) and its rendered image show both entry points.
 
 ![Jev command architecture](assets/architecture.png)
+
+### Jev exchange debugging
+
+Set `JEV_DEBUG=true` in the backend environment and restart the server to enable
+request and response capture. Open **Debug** on either game page to inspect
+Natural-Language Controls. Capture continues while the panel is closed. The
+setting defaults to disabled; command responses then keep their existing domain
+fields. Structured Controls do not call Jev or create exchanges. Credentials and
+transport headers are excluded from diagnostic data.
+
+The Debug panel keeps the latest 50 exchanges in this tab's memory, including
+commands submitted while it is closed. New games preserve history. Refreshing
+starts fresh, and **Clear history** removes entries and selection immediately,
+including pending requests whose later responses cannot restore them. New entries
+preserve the inspected exchange. Click the new-exchange indicator to inspect the
+latest entry. If retention removes the inspected exchange, the panel asks you to
+select a retained entry.
+
+At widths of 1400 pixels or more, the panel sits beside the game. Use **Panel
+width** to adjust it between 400 and 700 pixels. At smaller widths it sits below
+the game, with separate scrolling for history and details. Each tab has its own
+history while all tabs connected to one backend share the game and Pending
+Command state. History is neither persisted nor synchronized across tabs.
