@@ -111,6 +111,12 @@ setting defaults to disabled; command responses then keep their existing domain
 fields. Structured Controls do not call Jev or create exchanges. Credentials and
 transport headers are excluded from diagnostic data.
 
+To create an exchange, type a command such as `start a game` and choose **Send**
+or press Enter, or use a spoken command. **Start Game**, board cells, and position
+buttons apply game actions directly and leave Jev history empty. **TYPESAFE:
+UNVERIFIED** means the provider is configured but has not handled a Jev request
+yet. After a successful request, the badge updates on its next health poll.
+
 From the repository root, run this command to enable capture for the restarted
 backend while loading other settings from `.env`:
 
@@ -135,6 +141,6 @@ select a retained entry.
 
 At widths of 1400 pixels or more, the panel sits beside the game. Use **Panel
 width** to adjust it between 400 and 700 pixels. At smaller widths it sits below
-the game, with separate scrolling for history and details. Each tab has its own
+the game, with separate scrolling for history and details. Each tab captures only commands submitted from that tab. Each tab has its own
 history while all tabs connected to one backend share the game and Pending
 Command state. History is neither persisted nor synchronized across tabs.

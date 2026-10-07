@@ -65,6 +65,22 @@ def test_browser_inspects_actual_exchange_and_disabled_explanation():
                 page.locator("#jev-debug-button").click()
                 assert panel.is_visible()
                 page.wait_for_function("document.querySelector('#jev-debug-panel > p').hidden")
+                hint = panel.inner_text()
+                assert "typed or spoken" in hint
+                assert "Send or Enter" in hint
+                assert "Start Game, board cells, and position buttons" in hint
+                page.locator("#tts-toggle").uncheck()
+                with page.expect_response(lambda response: response.url.endswith("/api/game") and response.request.method == "POST"):
+                    page.locator('[data-cmd="start_game"]').click()
+                with page.expect_response(lambda response: response.url.endswith("/api/game/move")):
+                    page.locator('.cell[data-position="0"]').click()
+                with page.expect_response(lambda response: response.url.endswith("/api/game/move")):
+                    page.locator('.position-buttons [data-row="1"][data-col="1"]').click()
+                assert page.request.get(base + "/api/game").json()["board"] == ["X", None, None, None, "O", None, None, None, None]
+                assert page.locator('.cell[data-position="0"]').inner_text() == "X"
+                assert page.locator('.cell[data-position="4"]').inner_text() == "O"
+                assert panel.locator(".jev-exchange-entry").count() == 0
+                assert len(provider.calls) == 0
                 page.locator("#voice-input").fill("<img src=x onerror=alert(1)> start")
                 with page.expect_response(lambda response: response.url.endswith("/api/game/command")) as result:
                     page.locator("#send-cmd-btn").click()
@@ -78,6 +94,7 @@ def test_browser_inspects_actual_exchange_and_disabled_explanation():
                 assert "state_change_requested" in panel.inner_text()
                 assert "<img src=x onerror=alert(1)> start" in panel.inner_text()
                 assert len(provider.calls) == 1
+                assert page.request.get(base + "/api/game").json()["board"] == [None] * 9
                 page.locator("#jev-debug-button").click()
                 assert not panel.is_visible()
                 page.close()

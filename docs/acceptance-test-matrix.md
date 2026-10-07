@@ -98,7 +98,7 @@ speech inference but does not establish microphone capture or audible output.
 | Request-local correlation under overlapping reverse-order completion; disabled response contract | `test_overlapping_capture_is_submission_local_and_sanitized`; `test_success_response_has_only_domain_fields` |
 | Pending entry updates, list selection, separate provider/application summary, payload inspection, literal hostile command | `test_browser_inspects_actual_exchange_and_disabled_explanation` through Chromium and the real command HTTP route |
 | Credentials excluded by key and configured-secret substring | `test_overlapping_capture_is_submission_local_and_sanitized` |
-| Structured Controls bypass interpreter and preserve authoritative game behavior | Existing command, session and browser controller acceptance suite |
+| Empty Debug panel explains typed/spoken commands and Send/Enter; Start Game, board cells, and position buttons preserve authoritative game behavior with zero provider calls and no history, then typed Send creates an exchange | `test_browser_inspects_actual_exchange_and_disabled_explanation` through real browser controls, recording provider, and GET `/api/game` |
 
 Browser coverage above is deterministic provider integration. Its unrelated
 speech health and synthesis requests are intercepted to avoid loading speech
