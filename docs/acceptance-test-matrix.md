@@ -131,3 +131,22 @@ speech requests and the intentional failed game refresh are external test seams.
 | Available failure payload remains inspectable without fabricated response | Provider failure coverage owned by issue #17; the same expandable payload helper renders failure details |
 
 Browser acceptance isolates speech HTTP boundaries explicitly. It does not verify live ASR, TTS, or external provider calls.
+
+## Jev history and responsive layout, issue #19
+
+| Criterion | Deterministic browser evidence |
+| --- | --- |
+| Latest 50 exchanges, closed-panel capture, new-game preservation, refresh reset | `test_history_lifetime_selection_retention_and_layout` |
+| Preserved selection, new indicator, explicit selected-entry eviction | `test_history_lifetime_selection_retention_and_layout` |
+| Clear history and selection, pending response cannot restore cleared entries | `test_history_lifetime_selection_retention_and_layout` |
+| Wide side panel and adjustable width, narrow panel below game without page overflow, readable history and expanded details | `test_history_lifetime_selection_retention_and_layout` |
+| Independent tab histories and shared authoritative game and Pending Command | `test_two_tabs_have_private_history_and_share_game_and_pending` |
+| Debug-only label endpoint redacts configured secrets and explicit credential syntax without Jev calls or game mutations; disabled endpoint discloses no command | `test_debug_label_sanitizes_without_provider_or_game_operations`, `test_disabled_debug_label_discloses_no_command` |
+| Pending entries start with numbered generic labels and show server-sanitized Player Commands when labels arrive; configured secrets and explicit credential assignments are excluded, failed label fetch keeps the generic label, and pending raw JSON excludes command text | `test_pending_command_identity_excludes_explicit_credentials_and_raw_payload` |
+| Overlapping real submissions in two tabs complete in reverse order with originating request, distinct SDK response, application result, and shared authoritative state preserved | `test_overlapping_tabs_correlate_reverse_completion_and_shared_game` |
+| Command submitted while capability fetch is pending retains its correlated response | `test_command_submitted_during_capability_loading_is_correlated` |
+
+These tests drive production browser controls and command routes with the declared
+TypeSafe SDK recording provider. Speech routes are isolated at their model
+boundary. A separate credential-gated browser run must verify live Jev capture;
+deterministic provider results do not establish service availability.

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 import os
+import re
 from typing import Any
 
 
@@ -46,5 +47,11 @@ def sanitize(value: Any) -> Any:
         return [sanitize(item) for item in value]
     if isinstance(value, str):
         secret = os.getenv("TYPESAFE_API_KEY")
-        return value.replace(secret, "[redacted]") if secret else value
+        value = value.replace(secret, "[redacted]") if secret else value
+        return re.sub(
+            r"\b(?:authorization\s*:\s*(?:bearer\s+)?|bearer\s+|[\w-]*(?:key|token|secret|password)[\w-]*\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)",
+            "[redacted]",
+            value,
+            flags=re.IGNORECASE,
+        )
     return value

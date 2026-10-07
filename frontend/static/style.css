@@ -576,3 +576,37 @@ h1 {
 .jev-exchange-detail { min-width: 0; overflow-wrap: anywhere; }
 .jev-exchange-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 400px; overflow: auto; }
 @media (max-width: 600px) { .jev-explorer { grid-template-columns: 1fr; } }
+
+body.jev-debug-open { overflow-y: auto; gap: 24px; padding: 24px; align-items: flex-start; }
+body.jev-debug-open > .container { flex: 0 0 800px; width: 800px; min-width: 800px; max-width: 100%; }
+body.jev-debug-open .game-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body.jev-debug-open .cell { width: 100%; }
+body.jev-debug-open #voice-input { min-width: 0; }
+body.jev-debug-open .command-input { flex-wrap: wrap; }
+
+#jev-debug-panel { flex: 0 1 auto; min-width: 400px; width: 500px; max-width: 100%; position: relative; z-index: 1; margin-top: 48px; }
+.jev-debug-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.jev-debug-controls label { display: flex; align-items: center; gap: .5rem; }
+.jev-exchange-list { max-height: 65vh; overflow-y: auto; min-width: 0; }
+.jev-exchange-detail { max-height: 75vh; overflow-y: auto; }
+@media (max-width: 1399px) {
+    body.jev-debug-open { flex-direction: column; align-items: center; }
+    body.jev-debug-open > .container { flex: 0 0 auto; min-width: 0; }
+    #jev-debug-panel { min-width: 0; margin-top: 0; width: min(700px, 100%); }
+    .jev-debug-controls label { display: none; }
+}
+@media (max-width: 600px) {
+    body.jev-debug-open { padding: 12px; }
+    body.jev-debug-open > .container { min-width: 0; width: 100%; padding-left: 12px; padding-right: 12px; }
+    .jev-exchange-list { max-height: 240px; }
+    body.jev-debug-open #voice-input { min-width: 0; width: 100%; flex-basis: 100%; }
+    body.jev-debug-open .nav-header { padding: 12px; }
+    body.jev-debug-open h1 { font-size: 1.5em; overflow-wrap: anywhere; letter-spacing: 2px; }
+    body.jev-debug-open .server-status { flex-wrap: wrap; }
+    body.jev-debug-open .game-section, body.jev-debug-open .voice-section { min-width: 0; width: 100%; }
+    body.jev-debug-open .voice-panel { padding: 12px; }
+    body.jev-debug-open .position-buttons { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    body.jev-debug-open .position-buttons button { min-width: 0; overflow-wrap: anywhere; }
+}
+
+.jev-explorer[hidden], .jev-debug-controls[hidden] { display: none; }
