@@ -101,3 +101,12 @@ For final live verification, drive the running browser through a Structured Cont
 The [architecture explanation](docs/jev-migration-plan.md) describes module ownership. The editable [diagram](architecture.drawio) and its rendered image show both entry points.
 
 ![Jev command architecture](assets/architecture.png)
+
+### Jev exchange debugging
+
+Set `JEV_DEBUG=true` in the backend environment and restart the server to enable
+request and response capture. Open **Debug** on either game page to inspect
+Natural-Language Controls. Capture continues while the panel is closed. The
+setting defaults to disabled; command responses then keep their existing domain
+fields. Structured Controls do not call Jev or create exchanges. Credentials and
+transport headers are excluded from diagnostic data.

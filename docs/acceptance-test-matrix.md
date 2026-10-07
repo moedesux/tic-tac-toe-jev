@@ -86,3 +86,19 @@ standalone adapter fakes, and speech endpoint fakes cannot replace live checks.
 Standalone simulation with TTS disabled establishes command transport but does
 not establish audio playback. A TTS WAV round-trip through ASR establishes local
 speech inference but does not establish microphone capture or audible output.
+
+## Jev debug capture, issue #16
+
+| Acceptance criterion | Passing deterministic coverage |
+| --- | --- |
+| Explicit `JEV_DEBUG=true` setting, visible Debug control, initially closed panel and disabled explanation | `test_browser_inspects_actual_exchange_and_disabled_explanation`; `test_enabled_capture_contains_actual_provider_exchange` |
+| Actual request state/questions and returned confidence/probabilities with one provider call | `test_enabled_capture_contains_actual_provider_exchange` using the recording TypeSafe provider |
+| Request-local correlation under overlapping reverse-order completion; disabled response contract | `test_overlapping_capture_is_submission_local_and_sanitized`; `test_success_response_has_only_domain_fields` |
+| Pending entry updates, list selection, separate provider/application summary, payload inspection, literal hostile command | `test_browser_inspects_actual_exchange_and_disabled_explanation` through Chromium and the real command HTTP route |
+| Credentials excluded by key and configured-secret substring | `test_overlapping_capture_is_submission_local_and_sanitized` |
+| Structured Controls bypass interpreter and preserve authoritative game behavior | Existing command, session and browser controller acceptance suite |
+
+Browser coverage above is deterministic provider integration. Its unrelated
+speech health and synthesis requests are intercepted to avoid loading speech
+models. Real Jev service capture and browser verification without interception
+are separate credential-gated checks, recorded for the parent issue #15.
