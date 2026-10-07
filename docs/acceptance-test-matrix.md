@@ -120,3 +120,14 @@ command success flag also reports successful processing of rejected moves. Debug
 responses expose that outcome without changing ordinary command JSON. Browser
 coverage drives real controls and command HTTP routes with a recording provider;
 speech requests and the intentional failed game refresh are external test seams.
+## Jev payload explorer, issue #18
+
+| Acceptance criterion | Evidence |
+| --- | --- |
+| Collapsed full request/response and formatted raw JSON below compact SDK judgments | `test_browser_expands_and_copies_sanitized_actual_payloads` through real browser controls |
+| Actual submitted state/questions, SDK confidence and probabilities, pending follow-up questions/judgments | `test_browser_expands_and_copies_sanitized_actual_payloads` with recording provider returning declared SDK response models |
+| Request/response Copy produces captured sanitized JSON | `test_browser_expands_and_copies_sanitized_actual_payloads` reads the browser clipboard |
+| Hostile command markup stays literal and configured credentials are redacted in display/copy | `test_browser_expands_and_copies_sanitized_actual_payloads`, `test_overlapping_capture_is_submission_local_and_sanitized` |
+| Available failure payload remains inspectable without fabricated response | Provider failure coverage owned by issue #17; the same expandable payload helper renders failure details |
+
+Browser acceptance isolates speech HTTP boundaries explicitly. It does not verify live ASR, TTS, or external provider calls.

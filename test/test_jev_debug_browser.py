@@ -26,14 +26,15 @@ def debug_server(enabled, provider=None):
             return await super().system_one(state=state, questions=questions)
 
     provider = provider or DelayedProvider(intent="start_game")
-    processor = PlayerCommandProcessor(JevCommandInterpreter(provider), GameSession())
+    session = GameSession()
+    processor = PlayerCommandProcessor(JevCommandInterpreter(provider), session)
     app.dependency_overrides[get_command_processor] = lambda: processor
     with socket.socket() as allocation:
         allocation.bind(("127.0.0.1", 0))
         port = allocation.getsockname()[1]
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, lifespan="off", log_level="error"))
     thread = threading.Thread(target=server.run)
-    with patch.dict(os.environ, {"JEV_DEBUG": str(enabled).lower()}):
+    with patch.dict(os.environ, {"JEV_DEBUG": str(enabled).lower()}), patch("backend.main.get_game_session", return_value=session):
         thread.start()
         try:
             deadline = time.monotonic() + 10

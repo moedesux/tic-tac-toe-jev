@@ -37,9 +37,24 @@
         const section = document.createElement('details');
         const heading = document.createElement('summary');
         heading.textContent = title;
+        const json = JSON.stringify(value, null, 2);
         const pre = document.createElement('pre');
-        pre.textContent = JSON.stringify(value, null, 2);
-        section.append(heading, pre);
+        pre.textContent = json;
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.textContent = 'Copy';
+        copy.setAttribute('aria-label', `Copy ${title.toLowerCase()}`);
+        const status = document.createElement('span');
+        status.setAttribute('role', 'status');
+        copy.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(json);
+                status.textContent = 'Copied';
+            } catch {
+                status.textContent = 'Copy failed. Select the JSON to copy it manually.';
+            }
+        });
+        section.append(heading, copy, status, pre);
         parent.append(section);
     }
 
@@ -48,7 +63,7 @@
         for (const exchange of exchanges) {
             const item = document.createElement('button');
             item.className = 'jev-exchange-entry';
-            item.textContent = `${exchange.control} · ${exchange.status} · ${Math.round(exchange.duration_ms || 0)} ms`;
+            item.textContent = `${exchange.request?.state?.natural_language_control || 'Player Command'} · ${exchange.status} · ${Math.round(exchange.duration_ms || 0)} ms`;
             item.setAttribute('aria-pressed', String(exchange === selected));
             item.addEventListener('click', () => { selected = exchange; render(); });
             list.append(item);
@@ -58,7 +73,7 @@
             line(detail, 'Submit a Player Command to inspect its Jev exchange.');
             return;
         }
-        line(detail, selected.control);
+        line(detail, selected.request?.state?.natural_language_control || 'Player Command');
         line(detail, `Jev: ${selected.status}`);
         if (selected.error) line(detail, `Provider error: ${selected.error.code}`);
         if (selected.application) {
@@ -66,16 +81,20 @@
             line(detail, selected.application.message);
         }
         if (selected.response) {
-            for (const [name, judgment] of Object.entries(selected.response.choices || {})) {
-                line(detail, `${name}: ${judgment.choice}, confidence ${judgment.confidence}`);
-            }
-            for (const [name, judgment] of Object.entries(selected.response.nouls || {})) {
-                line(detail, `${name}: ${judgment.noul}`);
+            const answers = selected.response.answers || {};
+            for (const [name, judgment] of Object.entries(answers)) {
+                if ('choice' in judgment) {
+                    line(detail, `${name}: ${judgment.choice}, confidence ${judgment.confidence}`);
+                } else if ('noul' in judgment) {
+                    line(detail, `${name}: ${judgment.noul}`);
+                }
             }
         }
         if (selected.request) payload(detail, 'Full request', selected.request);
         if (selected.response) payload(detail, 'Full response', selected.response);
         if (selected.error) payload(detail, 'Full failure', selected.error);
+        const {control, started, ...captured} = selected;
+        payload(detail, 'Raw JSON', captured);
     }
 
     window.jevDebug = {
