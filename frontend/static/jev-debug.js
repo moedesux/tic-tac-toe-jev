@@ -108,7 +108,7 @@
         }
         detail.replaceChildren();
         if (!selected) {
-            line(detail, selectionEvicted ? 'Selected exchange was removed by the 50-exchange limit. Select a retained exchange.' : 'Submit a Player Command to inspect its Jev exchange.');
+            line(detail, selectionEvicted ? 'Selected exchange was removed by the 50-exchange limit. Select a retained exchange.' : 'Jev exchanges come from typed or spoken commands. Type a command and use Send or Enter, or speak into the microphone. Start Game, board cells, and position buttons apply game actions directly and do not create Jev exchanges.');
             return;
         }
         line(detail, selected.request?.state?.natural_language_control || selected.label);
