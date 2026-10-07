@@ -1,0 +1,29 @@
+{"id":"greeting","category":"social","control":"hello","intent":"greeting"}
+{"id":"start","category":"start","control":"start a new game","intent":"start_game"}
+{"id":"board","category":"read_only","control":"show me the board","intent":"show_board"}
+{"id":"status","category":"read_only","control":"whose turn is it","intent":"show_status"}
+{"id":"thanks","category":"social","control":"thanks","intent":"thanks"}
+{"id":"goodbye","category":"social","control":"goodbye","intent":"goodbye"}
+{"id":"irrelevant","category":"irrelevant","control":"what is the weather","intent":"unclear","confidence":0.35}
+{"id":"ambiguous_move","category":"ambiguous","control":"play there","intent":"place_move","position":null,"expected":{"clarification_required":true}}
+{"id":"low_confidence_move","category":"insufficient_confidence_move","control":"maybe play center","intent":"place_move","position":null,"confidence":0.30,"setup":{"moves":[0]},"expected":{"clarification_required":true,"board":["X",null,null,null,null,null,null,null,null],"pending":{"intent":"place_move","position":null}}}
+{"id":"low_confidence_position","category":"insufficient_confidence_position","control":"play somewhere middle","intent":"place_move","position":null,"position_confidence":0.0,"setup":{"moves":[0]},"expected":{"clarification_required":true,"board":["X",null,null,null,null,null,null,null,null],"pending":{"intent":"place_move","position":null}}}
+{"id":"low_confidence_reset","category":"insufficient_confidence_reset","control":"maybe start over or keep this game","intent":"start_game","confidence":0.55,"setup":{"moves":[0]},"expected":{"clarification_required":true,"board":["X",null,null,null,null,null,null,null,null],"pending":null}}
+{"id":"reset_existing","category":"existing_game_reset","control":"restart the game","intent":"start_game","confidence":0.95,"setup":{"moves":[0]},"expected":{"clarification_required":false,"board":[null,null,null,null,null,null,null,null,null],"turn":"X","pending":null}}
+{"id":"top_left","category":"position","control":"play top left","intent":"place_move","position":"top_left"}
+{"id":"top_center","category":"position","control":"play the top middle","intent":"place_move","position":"top_center"}
+{"id":"top_right","category":"position","control":"play upper right","intent":"place_move","position":"top_right"}
+{"id":"middle_left","category":"position","control":"play middle left","intent":"place_move","position":"middle_left"}
+{"id":"center","category":"position","control":"play center","intent":"place_move","position":"center"}
+{"id":"middle_right","category":"position","control":"play middle right","intent":"place_move","position":"middle_right"}
+{"id":"bottom_left","category":"position","control":"play bottom left","intent":"place_move","position":"bottom_left"}
+{"id":"bottom_center","category":"position","control":"play bottom middle","intent":"place_move","position":"bottom_center"}
+{"id":"bottom_right","category":"position","control":"play bottom right","intent":"place_move","position":"bottom_right"}
+{"id":"relative_unique","category":"board_relative","control":"play the only open spot in the middle row","intent":"place_move","position":"middle_right","setup":{"moves":[0,2,3,4]},"expected":{"clarification_required":false,"board":["X",null,"O","X","O","X",null,null,null],"turn":"O","pending":null}}
+{"id":"pending_position","category":"pending_missing","control":"middle right","intent":"place_move","position":"middle_right","setup":{"moves":[0],"pending":{"intent":"place_move"}},"expected":{"clarification_required":false,"board":["X",null,null,null,null,"O",null,null,null],"pending":null}}
+{"id":"pending_cancel","category":"pending_cancel","control":"cancel that","intent":"place_move","cancel_confidence":0.95,"setup":{"pending":{"intent":"place_move"}},"expected":{"clarification_required":false,"pending":null}}
+{"id":"pending_affirm","category":"pending_affirm","control":"yes, that works","intent":"place_move","affirm_confidence":0.95,"setup":{"moves":[0],"pending":{"intent":"place_move","position":"center"}},"expected":{"clarification_required":false,"board":["X",null,null,null,"O",null,null,null,null],"pending":null}}
+{"id":"pending_reject","category":"pending_reject","control":"no, choose another","intent":"place_move","reject_confidence":0.95,"setup":{"pending":{"intent":"place_move","position":"center"}},"expected":{"clarification_required":true,"pending":{"intent":"place_move","position":null}}}
+{"id":"start_move","category":"start_plus_move","control":"start and play center","intent":"start_game","position":"center","initial_move_requested":true,"expected":{"clarification_required":false,"board":[null,null,null,null,"X",null,null,null,null],"pending":null}}
+{"id":"start_missing_move","category":"start_plus_move_missing","control":"start and make a move","intent":"start_game","initial_move_requested":true,"expected":{"clarification_required":true,"board":[null,null,null,null,null,null,null,null,null],"pending":{"intent":"place_move","position":null}}}
+{"id":"start_uncertain_move","category":"start_plus_move_uncertain","control":"start and play somewhere middle","intent":"start_game","initial_move_requested":true,"position":null,"position_confidence":0.0,"expected":{"clarification_required":true,"board":[null,null,null,null,null,null,null,null,null],"pending":{"intent":"place_move","position":null}}}

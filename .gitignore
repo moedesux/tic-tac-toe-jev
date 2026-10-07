@@ -32,3 +32,5 @@ __pycache__
 venv
 *.pid
 test_results.json
+
+.env

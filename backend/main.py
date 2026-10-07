@@ -4,19 +4,19 @@ Provides REST API endpoints for single game operations.
 """
 
 import asyncio
-import httpx
-import json
 import logging
-import threading
+import os
 import time
-import torch
+import threading
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
+import torch
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -32,75 +32,72 @@ def _serve_html_with_cache_bust(filename: str) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
+from backend.game_session import (
+    GameSession,
+    InvalidMoveError,
+    NoGameError,
+)
 from backend.models import (
-    MoveCreate,
+    CommandResult,
     GameResponse,
+    MessageResponse,
+    MoveCreate,
+    PlayerCommandRequest,
+)
+from backend.player_command import PlayerCommandProcessor
+from backend.typesafe_health import (
+    TypeSafeHealthStatus,
+    TypeSafeOperationalError,
+    map_typesafe_error,
+    typesafe_health,
 )
 from config.config import get_backend_config, get_voice_config
 
-from backend.game import check_winner, get_winning_line, validate_move, apply_move
-
 # Module-level logger
 logger = logging.getLogger(__name__)
-
-# Module-level singleton for the voice orchestrator
-# Initialized lazily on first /api/voice/command request
-_orchestrator = None
-_slm_client = None
-_game_interface = None
-
-
-def _get_orchestrator():
-    """Lazily initialize and return the voice orchestrator singleton."""
-    global _orchestrator, _slm_client, _game_interface
-
-    if _orchestrator is not None:
-        return _orchestrator
-
-    with _orchestrator_lock:
-        # Double-check after acquiring lock (another thread may have initialized)
-        if _orchestrator is not None:
-            return _orchestrator
-
-        from voice_game_orchestrator import SLMClient, TextOrchestrator
-        from voice_game_interface import VoiceGameInterface
-
-        model_name = get_voice_config().slm_model_name
-        api_key = None  # Empty for local llama.cpp server
-        port = None  # Uses config value (8080)
-
-        _slm_client = SLMClient(model_name, api_key=api_key, port=port)
-        _game_interface = VoiceGameInterface()
-        _orchestrator = TextOrchestrator(_slm_client, _game_interface)
-
-        logger.info("Voice orchestrator initialized with model: %s", model_name)
-        return _orchestrator
-
 
 # Hardcoded static file paths (from [paths] section in backend.conf)
 STATIC_MOUNT_POINT = "/static"
 STATIC_DIRECTORY = Path(__file__).parent.parent / "frontend" / "static"
 
 
+# Single authoritative in-process game boundary.
+_game_session = GameSession()
+
+
+def get_game_session() -> GameSession:
+    """Return the application's shared asynchronous game-session boundary."""
+    return _game_session
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Own one asynchronous TypeSafe client for the application lifetime."""
+    from backend.jev_command_interpreter import MissingConfigurationInterpreter, open_jev_command_interpreter
+    typesafe_health.reset()
+    if not os.getenv("TYPESAFE_API_KEY"):
+        application.state.command_processor = PlayerCommandProcessor(MissingConfigurationInterpreter(), get_game_session())
+        yield
+        return
+    async with open_jev_command_interpreter() as interpreter:
+        application.state.command_processor = PlayerCommandProcessor(interpreter, get_game_session())
+        yield
+
+
 config = get_backend_config()
-app = FastAPI(title=config.api_title, version=config.api_version)
+app = FastAPI(
+    title=config.api_title,
+    version=config.api_version,
+    lifespan=lifespan,
+)
 
-# Single game storage
-current_game: Optional[dict] = None
-game_lock = asyncio.Lock()
-_orchestrator_lock = threading.Lock()
 
-
-def _create_initial_game(game_id: str) -> dict:
-    """Create a fresh game state dictionary."""
-    return {
-        "gameId": game_id,
-        "board": [None] * 9,
-        "turn": "X",
-        "winner": None,
-        "status": "ongoing",
-        "gameOver": False,
-    }
+async def get_command_processor(request: Request) -> PlayerCommandProcessor:
+    """Return the application-lifetime Player Command processor."""
+    processor = getattr(request.app.state, "command_processor", None)
+    if processor is None:
+        raise HTTPException(status_code=503, detail="Command service unavailable")
+    return processor
 
 
 @app.get("/api/health")
@@ -111,6 +108,12 @@ async def health_check():
         "service": config.api_title,
         "version": config.api_version,
     }
+
+
+@app.get("/api/health/typesafe")
+async def typesafe_health_check():
+    """Return cached TypeSafe state; this endpoint never calls the provider."""
+    return typesafe_health.snapshot()
 
 
 @app.get("/api/health/asr")
@@ -157,31 +160,6 @@ async def gpu_health_check():
             "vulkan_available": False,
             "device": "unknown"
         }
-
-
-@app.get("/api/health/slm")
-async def slm_health_check():
-    """Proxy SLM health check through backend to avoid CORS issues."""
-    # Detect GPU availability — SLM runs on same hardware as this process
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif hasattr(torch.backends, "vulkan"):
-        if torch.backends.vulkan.is_available():
-            device = "vulkan"
-    
-    vc = get_voice_config()
-    slm_url = f"http://{vc.slm_host}:{vc.slm_port}"
-    async with httpx.AsyncClient(http2=False, timeout=5.0) as client:
-        try:
-            resp = await client.get(f"{slm_url}/v1/models")
-            if resp.status_code == 200:
-                data = resp.json()
-                model_name = data.get("data", [{}])[0].get("id", "unknown") if data.get("data") else "unknown"
-                return {"status": "up", "service": "SLM", "model": model_name, "device": device}
-            return {"status": "down", "service": "SLM", "error": f"HTTP {resp.status_code}", "device": device}
-        except httpx.RequestError:
-            return {"status": "down", "service": "SLM", "error": "Cannot reach SLM server", "device": device}
 
 
 @app.get("/api/health/tts")
@@ -232,222 +210,83 @@ async def serve_regular_game():
 @app.post("/api/game", response_model=GameResponse)
 async def create_game():
     """Create a new game (restart if game exists)."""
-    global current_game
-
-    async with game_lock:
-        game_id = str(uuid.uuid4())
-        current_game = _create_initial_game(game_id)
-
-        return GameResponse(**current_game)
+    return await get_game_session().create()
 
 
 @app.get("/api/game", response_model=GameResponse)
 async def get_game():
     """Get current game state."""
-    global current_game
-
-    async with game_lock:
-        if current_game is None:
-            raise HTTPException(status_code=404, detail="No game created yet")
-
-        return GameResponse(**current_game)
+    try:
+        return await get_game_session().read()
+    except NoGameError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/api/game/move", response_model=GameResponse)
 async def make_move(move: MoveCreate):
     """Make a move on the current game."""
-    global current_game
+    try:
+        return await get_game_session().move(move.position)
+    except NoGameError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except InvalidMoveError as error:
+        raise HTTPException(status_code=400, detail=error.detail) from error
 
-    async with game_lock:
-        if current_game is None:
-            raise HTTPException(status_code=404, detail="No game created yet")
 
-        board = current_game["board"]
-        turn = current_game["turn"]
+@app.post("/api/game/depart", response_model=MessageResponse)
+async def depart_game():
+    """Apply a structured departure without invoking natural-language interpretation."""
+    await get_game_session().depart()
+    return MessageResponse(message="Thanks for playing! Goodbye!")
 
-        # Validate move
-        is_valid, error_message = validate_move(board, move.position, turn)
-        if not is_valid:
-            raise HTTPException(status_code=400, detail=error_message)
 
-        # Check if game is already over
-        winner = check_winner(board)
-        if winner in ("X", "O"):
-            raise HTTPException(status_code=400, detail="Game already completed")
-
-        # Apply move
-        new_board = apply_move(board, move.position, turn)
-        next_turn = "O" if turn == "X" else "X"
-
-        # Check for winner after move
-        new_winner = check_winner(new_board)
-
-        # Update game state
-        # Status semantics:
-        #   "ongoing"  — game in progress, no winner yet
-        #   "completed"— game ended with a winner (X or O)
-        #   "draw"     — game ended with no winner (full board, no line)
-        # The `winner` field: set to "X"/"O" for wins, None for draws/ongoing.
-        # The `gameOver` flag is the canonical "is game finished?" indicator.
-        current_game["board"] = new_board
-        current_game["turn"] = next_turn
-        current_game["winner"] = new_winner if new_winner in ("X", "O") else None
-        current_game["status"] = (
-            "completed"
-            if new_winner in ("X", "O")
-            else ("draw" if new_winner == "draw" else "ongoing")
+@app.post("/api/game/command", response_model=CommandResult)
+async def process_game_command(
+    request: PlayerCommandRequest,
+    processor: Annotated[PlayerCommandProcessor, Depends(get_command_processor)],
+):
+    """Interpret and execute one Natural-Language Control in process."""
+    request_id = uuid.uuid4().hex
+    started = time.perf_counter()
+    try:
+        result = await processor.process(request.control, None)
+    except TypeSafeOperationalError as error:
+        mapping = map_typesafe_error(error)
+        if mapping.health_status is TypeSafeHealthStatus.UNAVAILABLE:
+            typesafe_health.record_unavailable()
+        elif mapping.health_status is TypeSafeHealthStatus.DEGRADED:
+            typesafe_health.record(success=False)
+        logger.warning(
+            "typesafe command failed request_id=%s provider_request_id=%s status=%s "
+            "code=%s latency_ms=%.1f",
+            request_id,
+            error.request_id,
+            mapping.http_status,
+            mapping.code,
+            (time.perf_counter() - started) * 1000,
         )
-        current_game["gameOver"] = new_winner is not None
-
-        return GameResponse(**current_game)
+        raise HTTPException(
+            status_code=mapping.http_status,
+            detail={"code": mapping.code, "request_id": request_id},
+        ) from error
+    metadata = getattr(processor, "metadata", {})
+    typesafe_health.record(success=True, model=metadata.get("model"))
+    usage = metadata.get("usage")
+    logger.info(
+        "typesafe command completed request_id=%s status=success latency_ms=%.1f "
+        "confidence=%.3f model=%s input_tokens=%s output_tokens=%s",
+        request_id,
+        (time.perf_counter() - started) * 1000,
+        result.confidence,
+        metadata.get("model"),
+        usage.get("input_tokens") if isinstance(usage, dict) else None,
+        usage.get("output_tokens") if isinstance(usage, dict) else None,
+    )
+    return result
 
 
 # Serve static files
 app.mount(STATIC_MOUNT_POINT, StaticFiles(directory=STATIC_DIRECTORY), name="static")
-
-
-# ---------------------------------------------------------------------------
-# Config Endpoints
-# ---------------------------------------------------------------------------
-class TemplatesResponse(BaseModel):
-    """Response body for templates endpoint."""
-
-    templates: dict[str, str]
-
-
-@app.get("/api/config/templates", response_model=TemplatesResponse)
-async def get_templates():
-    """Return voice game response templates from config.
-
-    This endpoint serves the same templates used by the voice orchestrator,
-    preventing duplication between frontend and backend.
-    """
-    from config.voice_game_config import SUCCESS_TEMPLATES
-
-    return TemplatesResponse(templates=SUCCESS_TEMPLATES)
-
-
-# ---------------------------------------------------------------------------
-# Voice Command Endpoint — Frontend → SLM Pipeline
-# ---------------------------------------------------------------------------
-class VoiceCommandRequest(BaseModel):
-    """Request body for voice command endpoint."""
-
-    command: str = Field(..., max_length=500)
-    gameId: Optional[str] = None
-
-
-class VoiceCommandResponse(BaseModel):
-    """Response body for voice command endpoint."""
-
-    success: bool
-    response: str
-    function: str
-    arguments: dict
-
-
-@app.post("/api/voice/command", response_model=VoiceCommandResponse)
-async def voice_command(request: VoiceCommandRequest):
-    """Handle voice command from frontend via SLM pipeline.
-
-    Routes user text through the SLM (Gemma-4) for intent parsing,
-    then executes the resulting game action via the orchestrator.
-
-    Request body:
-        command: User's spoken/transcribed text
-        gameId:  Optional game ID (not used — backend manages state globally)
-
-    Response:
-        success: Whether the command was processed
-        response: Bot's reply message
-        function: The tool/function name the SLM selected
-        arguments: Parsed arguments for the selected function
-    """
-    command = request.command.strip()
-
-    if not command:
-        return VoiceCommandResponse(
-            success=False,
-            response="Please say something or type a command.",
-            function="",
-            arguments={},
-        )
-
-    # Initialize orchestrator on first request (lazy init)
-    try:
-        orchestrator = _get_orchestrator()
-    except Exception as e:
-        logger.error("Failed to initialize orchestrator: %s", e)
-        return VoiceCommandResponse(
-            success=False,
-            response="Voice service unavailable. Please try again.",
-            function="",
-            arguments={},
-        )
-
-    # Ensure a game exists and orchestrator knows about it
-    global current_game
-
-    async with game_lock:
-        if current_game is None:
-            # No game in backend — create one
-            game_id = str(uuid.uuid4())
-            current_game = _create_initial_game(game_id)
-
-        # Sync orchestrator's game_started flag with backend state
-        orchestrator.game_started = current_game is not None and current_game.get("status") != "completed" and current_game.get("status") != "draw"
-
-        # Sync VoiceGameInterface's game_id so make_move works
-        if not orchestrator.game.game_id:
-            orchestrator.game.game_id = current_game["gameId"]
-
-    # Run the synchronous orchestrator in a thread pool to avoid blocking
-    def _process():
-        return orchestrator.process_utterance(command)
-
-    try:
-        response_text = await asyncio.to_thread(_process)
-    except Exception as e:
-        logger.error("Orchestrator processing failed: %s", e, exc_info=True)
-        return VoiceCommandResponse(
-            success=False,
-            response="An error occurred. Please try again.",
-            function="",
-            arguments={},
-        )
-
-    # Extract the last tool call from conversation history
-    last_function = ""
-    last_arguments: dict = {}
-
-    for msg in reversed(orchestrator.conversation_history):
-        if msg.get("role") == "assistant" and "tool_calls" in msg:
-            tool_call = msg["tool_calls"][0]
-            last_function = tool_call["function"]["name"]
-
-            args_raw = tool_call["function"]["arguments"]
-            if isinstance(args_raw, str):
-                try:
-                    last_arguments = json.loads(args_raw)
-                except json.JSONDecodeError:
-                    last_arguments = {}
-            elif isinstance(args_raw, dict):
-                last_arguments = args_raw
-            else:
-                last_arguments = {}
-
-            break
-
-    # Handle None response (goodbye / exit)
-    if response_text is None:
-        response_text = "Thanks for playing! Goodbye!"
-
-    return VoiceCommandResponse(
-        success=True,
-        response=response_text,
-        function=last_function,
-        arguments=last_arguments,
-    )
 
 
 # ============================================================================
@@ -516,6 +355,7 @@ async def voice_transcribe(request: TranscribeRequest):
     """Transcribe audio using local Qwen3-ASR model."""
     try:
         import base64
+
         import numpy as np
 
         # Decode base64 → bytes → float32 numpy array

@@ -1,0 +1,88 @@
+# Command acceptance test matrix
+
+This matrix is the index from command behavior to deterministic evidence. Update
+it whenever command acceptance criteria or test ownership changes.
+
+| Behavior | Deterministic evidence |
+| --- | --- |
+| All nine positions execute through the command module | `test_confident_move_commands_cover_all_nine_positions` |
+| Moves require an existing game | `test_move_requires_game_and_does_not_create_one` |
+| Ambiguous or uncertain moves do not mutate the board | `test_ambiguous_move_does_not_mutate_board`; `test_uncertain_position_clarifies_without_mutation` |
+| Unique board-relative judgment resolves to a typed position and executes with current-player alternation | `test_unique_board_relative_judgment_returns_typed_position_and_full_game_state`; `test_unique_board_relative_adapter_move_applies_current_mark_and_alternates` |
+| Game rules reject occupied cells and retain win/draw semantics | `test_occupied_move_is_rejected_by_game_rules`; `test_command_moves_preserve_win_and_draw_results` |
+| Missing position creates pending state and a follow-up completes it | `test_missing_position_is_completed_by_follow_up_position` |
+| Medium-confidence position requires confirmation | `test_proposed_position_requires_affirmation_and_rejection_reopens_choice` |
+| Cancellation clears pending; social input preserves it | `test_cancellation_and_social_follow_up_preserve_expected_pending_state` |
+| Low-confidence follow-up preserves pending state | `test_low_confidence_follow_up_preserves_pending_move` |
+| Confident gameplay replaces pending state | `test_confident_gameplay_replaces_pending_move` |
+| Invalid confident replacement still clears pending state | `test_invalid_confident_replacement_also_clears_pending_move` |
+| New game clears pending state | `test_new_game_clears_pending_move_and_replaces_state` |
+| Game completion clears pending state | `test_game_completion_clears_pending_move` |
+| Departure clears pending state | `test_departure_clears_pending_move` |
+| Public game operations serialize through one lock | `test_concurrent_public_moves_are_serialized` |
+| Pending cancellation, affirmation, and rejection are batched | `test_pending_request_batches_cancellation_affirmation_and_rejection` |
+| Command API preserves domain response and no implicit game creation | `test_success_response_has_only_domain_fields`; `test_non_start_request_does_not_implicitly_create_game` |
+| Compound start with a precise initial move creates the game and places X atomically while retaining start intent | `test_start_with_precise_initial_move_is_one_atomic_start_transition` |
+| Compound start without a position starts the game and creates a missing-position pending command | `test_start_with_missing_initial_position_starts_and_waits_for_position` |
+| Compound start with an uncertain position starts without moving and creates a confirmation pending command | `test_start_with_uncertain_initial_position_starts_without_moving` |
+| TypeSafe failures use stable non-success HTTP mappings and safe request identifiers | `test_typesafe_failure_mapping` |
+| TypeSafe health reports configuration and cached command outcomes | `test_typesafe_health_transitions_and_recovery`; `test_successful_uncertainty_is_healthy_http_success`; `test_failed_command_updates_health_and_sanitizes_output` |
+| Health polling does not call the interpreter | `test_typesafe_health_endpoint_is_passive` |
+| Unsupported compounds execute only the selected supported action | `test_unsupported_compound_executes_only_the_selected_action` |
+| Initial move judgment is independently batched by the Jev adapter | `test_start_move_judgment_is_batched_as_an_independent_choice` |
+| Replacing an existing game requires stricter start confidence | `test_existing_game_requires_stricter_confidence_to_reset_for_start`; `test_high_confidence_start_can_reset_existing_game` |
+| Browser typed text and Web Speech transcripts share the domain command route | `test_browser_controller_smoke` |
+| Browser structured controls bypass Jev and remain usable without TypeSafe | `test_browser_controller_smoke`; `test_structured_departure_bypasses_interpretation_and_clears_pending` |
+| Browser renders domain responses and passive TypeSafe health | `test_browser_controller_smoke` |
+| Standalone microphone and simulation transcripts share the backend command path; responses reach TTS and failures recover | `test/test_standalone_command.py`: `test_microphone_loop_transcribes_then_uses_shared_command_path`; `test_simulation_text_uses_same_path_for_clarification`; `test_backend_failure_is_reported_and_loop_can_continue`; `test_http_adapter_has_bounded_timeout_and_maps_connection_failure`; `test_adapter_matches_representative_real_backend_command_results` |
+| Retired command-interpreter runtime, configuration, dependencies, and provider-specific tests are absent | `test_retired_command_interpreter_artifacts_are_absent` |
+| Retained speech endpoints decode ASR input and return playable TTS WAV audio after runtime cleanup | `test_transcribe_decodes_audio_and_returns_trimmed_text`; `test_synthesize_returns_playable_mono_wav` |
+
+The test names above live in `test/test_player_command.py`,
+`test/test_jev_command_interpreter.py`, `test/test_game_session.py`,
+`test/test_game_command_api.py`, `test/test_browser_controller.py`,
+`test/test_standalone_command.py`, and `test/test_speech_api.py`.
+
+Speech endpoint contract tests use fake speech engines and do not establish real
+model inference. Live ASR and TTS verification requires the retained local speech
+assets and their production dependencies.
+
+Live confidence calibration remains a separate migration criterion.
+
+Issue #7 calibration evidence is produced by `uv run python
+scripts/evaluate_jev_fixtures.py`. It uses the same `fixtures/command_behaviors.jsonl`
+corpus as deterministic tests, skips when `TYPESAFE_API_KEY` is absent, and emits
+only aggregate intent/position matches and confidence distributions. The four
+policy gates are recorded independently as `read_only_social`, `move`,
+`existing_game_reset`, and `position_selection`. The evaluator reports and
+checks the resolved `response.model`; production startup pins the validated
+version through `TYPESAFE_DEFAULT_MODEL` while allowing an explicit deployment
+override. A credential-free invocation still skips clearly.
+
+The calibrated Jev 1.13.0 policy is: baseline/read-only/social `0.60`, move
+`0.30`, existing-game reset `0.90`, and position selection `0.40`. Position
+reference presence/uniqueness use `0.40`, and pending follow-ups use `0.75`.
+Three consecutive pinned evaluations passed with zero canonical, safety, or
+composed behavior failures. The final sanitized judgment distributions are in
+`docs/calibration/jev-1.13.0.json`.
+
+## Documentation and final cutover acceptance
+
+Issue #12 also requires evidence beyond deterministic command contracts.
+
+| Acceptance criterion | Verification |
+| --- | --- |
+| Active documentation uses the glossary and describes both entry points, Structured Controls, and local speech | Review `README.md` and `docs/jev-migration-plan.md` against `CONTEXT.md` and executable entry points |
+| Setup uses server-side credentials and the validated model | Compare setup instructions with application lifespan and `open_jev_command_interpreter`; live evaluation reports `jev-1.13.0` |
+| Operations and troubleshooting match executable behavior | Compare commands with `voice_game.sh`, `download_models.sh`, configuration accessors, CLI help, health routes, and `FAILURE_MAPPINGS` |
+| Editable and rendered architecture show command ownership and Pending Command | Run `scripts/render_architecture.py` and inspect `assets/architecture.png` |
+| Tracked and ignored project artifacts contain no retired runtime | Run `scripts/audit_hard_cutover.py --root "$PWD"` on every active worktree; `test_retired_command_interpreter_artifacts_are_absent` |
+| Only the accepted decision record names retired technologies in project-owned text | Same audit, with the explicit dependency and binary scope described in the architecture explanation |
+| Audit detects ignored artifacts and preserves the approved decision record | `test_cutover_audit_detects_ignored_artifacts_without_exposing_content` |
+| Deterministic tests and live entry points pass | Full `uv run pytest -q`; real browser game, standalone client against running backend, and separate local speech inference checks |
+
+Record live service and hardware checks separately. Browser controller fakes,
+standalone adapter fakes, and speech endpoint fakes cannot replace live checks.
+Standalone simulation with TTS disabled establishes command transport but does
+not establish audio playback. A TTS WAV round-trip through ASR establishes local
+speech inference but does not establish microphone capture or audible output.

@@ -1,0 +1,29 @@
+{
+  "model": "jev-1.13.0",
+  "runs": 3,
+  "fixtures_per_run": 29,
+  "thresholds": {
+    "read_only_social": 0.6,
+    "move": 0.3,
+    "existing_game_reset": 0.9,
+    "position_selection": 0.4,
+    "position_reference": 0.4,
+    "pending_follow_up": 0.75
+  },
+  "observed_ranges": {
+    "read_only_social": {"min": 1.0, "max": 1.0},
+    "move": {"min": 0.04, "max": 0.99},
+    "existing_game_reset": {"min": 0.04, "max": 0.97},
+    "position_selection": {"min": 0.37, "max": 1.0}
+  },
+  "results": [
+    {"run": 1, "canonical_failures": 0, "safety_failures": 0, "behavior_failures": []},
+    {"run": 2, "canonical_failures": 0, "safety_failures": 0, "behavior_failures": []},
+    {"run": 3, "canonical_failures": 0, "safety_failures": 0, "behavior_failures": []}
+  ],
+  "judgment_artifacts": [
+    "jev-1.13.0-run-1.json",
+    "jev-1.13.0-run-2.json",
+    "jev-1.13.0-run-3.json"
+  ]
+}

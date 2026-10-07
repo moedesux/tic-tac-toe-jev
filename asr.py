@@ -7,10 +7,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from config.voice_game_config import EXIT_COMMANDS
-
-# Combined exit commands: config-defined phrases plus shorthand aliases.
-EXIT_SET = set(cmd.lower() for cmd in EXIT_COMMANDS) | {"q", "stop"}
+# Standalone speech-loop controls belong to the ASR entry-point boundary.
+EXIT_SET = {"quit", "exit", "q", "stop"}
 
 
 class GameEndRequested(Exception):

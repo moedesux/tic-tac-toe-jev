@@ -4,29 +4,11 @@ Located in the config/ directory. All config file resolution uses
 this file's location as the base, ensuring stable paths regardless of
 where the invoking script runs from.
 
-Voice game settings are loaded from voice_game_config.py as Python constants
-(clean triple-quoted strings). Infrastructure settings (SLM, ASR, TTS) are
-still loaded from voice.conf for backwards compatibility with startup scripts.
+Only retained local speech and backend settings are loaded from voice.conf.
 """
 
 import configparser
 from pathlib import Path
-
-# Import all voice game constants from the dedicated module
-from config.voice_game_config import (
-    GAME_TOOLS,
-    GAME_TOOLS_SLOT_DESCRIPTIONS,
-    EXIT_COMMANDS,
-    CLARIFICATION_CAPABILITIES,
-    ROW_NAMES,
-    COL_NAMES,
-    POSITION_MAPPINGS,
-    SLOT_REQUIREMENTS,
-    SLOT_PROMPTS,
-    SUCCESS_TEMPLATES,
-    SYSTEM_PROMPT,
-)
-
 
 # Get the project root directory — use this file's location for stable resolution
 PROJECT_ROOT = Path(__file__).parent
@@ -58,38 +40,12 @@ class BackendConfig:
 
 
 class VoiceConfig:
-    """Configuration for the voice game orchestrator.
-
-    Voice game settings come from voice_game_config.py (Python constants).
-    Infrastructure settings (SLM, ASR, TTS) still come from voice.conf.
-    """
+    """Configuration for local ASR/TTS and the backend connection."""
 
     def __init__(self):
         self.config_path = PROJECT_ROOT / "voice.conf"
         self.config = configparser.ConfigParser(interpolation=None)
         self.config.read(self.config_path)
-
-    # --- Infrastructure settings (from voice.conf) ---
-
-    @property
-    def slm_host(self) -> str:
-        return self.config.get("slm", "host").strip('"')
-
-    @property
-    def slm_port(self) -> int:
-        return self.config.getint("slm", "port")
-
-    @property
-    def slm_api_key(self) -> str:
-        return self.config.get("slm", "api_key").strip('"')
-
-    @property
-    def slm_model_name(self) -> str:
-        return self.config.get("slm", "model_name").strip('"')
-
-    @property
-    def slm_model_path(self) -> str:
-        return self.config.get("slm", "model_path").strip('"')
 
     @property
     def asr_model_path(self) -> str:
