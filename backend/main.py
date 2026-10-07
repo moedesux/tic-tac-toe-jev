@@ -272,10 +272,20 @@ async def process_game_command(
             mapping.code,
             (time.perf_counter() - started) * 1000,
         )
-        raise HTTPException(
-            status_code=mapping.http_status,
-            detail={"code": mapping.code, "request_id": request_id},
-        ) from error
+        detail = {"code": mapping.code, "request_id": request_id}
+        if exchange is not None:
+            return JSONResponse(status_code=mapping.http_status, content={
+                "detail": detail,
+                "jev_exchange": {
+                    "id": request_id,
+                    "status": "failure",
+                    "duration_ms": (time.perf_counter() - started) * 1000,
+                    "request": exchange.request,
+                    "response": None,
+                    "error": {"kind": error.kind.value, "code": mapping.code},
+                },
+            })
+        raise HTTPException(status_code=mapping.http_status, detail=detail) from error
     metadata = getattr(processor, "metadata", {})
     typesafe_health.record(success=True, model=metadata.get("model"))
     usage = metadata.get("usage")
@@ -297,7 +307,7 @@ async def process_game_command(
             "duration_ms": (time.perf_counter() - started) * 1000,
             "request": exchange.request,
             "response": exchange.response,
-            "application": application,
+            "application": {**application, "outcome": result.application_outcome},
         }})
     return result
 

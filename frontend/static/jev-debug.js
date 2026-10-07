@@ -75,8 +75,9 @@
         }
         line(detail, selected.request?.state?.natural_language_control || 'Player Command');
         line(detail, `Jev: ${selected.status}`);
+        if (selected.error) line(detail, `Provider error: ${selected.error.code}`);
         if (selected.application) {
-            line(detail, `Application: ${selected.application.intent}, ${selected.application.clarification_required ? 'clarification' : selected.application.success ? 'accepted' : 'rejected'}`);
+            line(detail, `Application: ${selected.application.intent}, ${selected.application.outcome || (selected.application.clarification_required ? 'clarification' : selected.application.success ? 'accepted' : 'rejected')}`);
             line(detail, selected.application.message);
         }
         if (selected.response) {
@@ -91,6 +92,7 @@
         }
         if (selected.request) payload(detail, 'Full request', selected.request);
         if (selected.response) payload(detail, 'Full response', selected.response);
+        if (selected.error) payload(detail, 'Full failure', selected.error);
         const {control, started, ...captured} = selected;
         payload(detail, 'Raw JSON', captured);
     }
@@ -111,7 +113,7 @@
             render();
         },
         fail(exchange, data) {
-            if (!exchange) return;
+            if (!exchange || exchange.status !== 'pending') return;
             Object.assign(exchange, data?.jev_exchange || {status: 'failure'});
             exchange.duration_ms ??= performance.now() - exchange.started;
             render();
