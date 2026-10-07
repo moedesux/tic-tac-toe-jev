@@ -61,3 +61,20 @@ dependency with a test shim when verifying the real integration.
 Completion criterion: every applicable acceptance criterion maps to a passing
 test, the full deterministic suite passes, and environment-limited checks are
 named precisely.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `moedesux/tic-tac-toe-jev`.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five default triage labels.
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use a single-context layout with root `GLOSSARY.md` and `docs/adr/`.
+See `docs/agents/domain.md`.

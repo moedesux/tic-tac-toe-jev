@@ -34,3 +34,4 @@ venv
 test_results.json
 
 .env
+.zvec-grep/
