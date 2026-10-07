@@ -59,6 +59,13 @@ class RepositoryStandardsTests(unittest.TestCase):
                 self.assertEqual(1, linked.returncode)
                 self.assertIn("FAIL: assets", linked.stdout)
                 self.assertNotIn(external, linked.stdout)
+            (root / "assets").unlink()
+            retired_test = bytes.fromhex("746573742f746573745f766f6963655f67616d652e7079").decode()
+            (root / "test").mkdir()
+            (root / retired_test).touch()
+            obsolete_test = subprocess.run(command, capture_output=True, text=True, check=False)
+            self.assertEqual(1, obsolete_test.returncode)
+            self.assertIn("FAIL: " + retired_test, obsolete_test.stdout)
 
     def test_game_session_private_helpers_stay_inside_game_session_module(self) -> None:
         violations: list[str] = []
