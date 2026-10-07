@@ -44,7 +44,7 @@ from backend.models import (
     MoveCreate,
     PlayerCommandRequest,
 )
-from backend.jev_diagnostics import capture_exchange, debug_enabled
+from backend.jev_diagnostics import capture_exchange, debug_enabled, sanitize
 from backend.player_command import PlayerCommandProcessor
 from backend.typesafe_health import (
     TypeSafeHealthStatus,
@@ -244,6 +244,11 @@ async def depart_game():
 @app.get("/api/debug/jev")
 async def jev_debug_capability():
     return {"enabled": debug_enabled()}
+
+
+@app.post("/api/debug/jev/label")
+async def jev_debug_label(request: PlayerCommandRequest):
+    return {"label": sanitize(request.control) if debug_enabled() else None}
 
 
 @app.post("/api/game/command", response_model=CommandResult)

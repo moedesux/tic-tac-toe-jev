@@ -36,6 +36,30 @@ class GameCommandApiTests(unittest.IsolatedAsyncioTestCase):
             base_url="http://testserver",
         )
 
+    async def test_debug_label_sanitizes_without_provider_or_game_operations(self) -> None:
+        with unittest.mock.patch.dict("os.environ", {"JEV_DEBUG": "true", "TYPESAFE_API_KEY": "credential-for-redaction"}):
+            async with self.client() as client:
+                for control in ["credential-for-redaction start", "Authorization: Bearer private-value", "api_key=private-value", "token: private-value"]:
+                    response = await client.post("/api/debug/jev/label", json={"control": control})
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn("[redacted]", response.json()["label"])
+                    self.assertNotIn("private-value", response.text)
+                    self.assertNotIn("credential-for-redaction", response.text)
+                ordinary = await client.post("/api/debug/jev/label", json={"control": "play center"})
+        self.assertEqual(ordinary.json(), {"label": "play center"})
+        self.assertEqual(self.interpreter.call_count, 0)
+        with self.assertRaises(NoGameError):
+            await self.session.read()
+
+    async def test_disabled_debug_label_discloses_no_command(self) -> None:
+        with unittest.mock.patch.dict("os.environ", {"JEV_DEBUG": "false"}):
+            async with self.client() as client:
+                response = await client.post("/api/debug/jev/label", json={"control": "private command"})
+        self.assertEqual(response.json(), {"label": None})
+        self.assertEqual(self.interpreter.call_count, 0)
+        with self.assertRaises(NoGameError):
+            await self.session.read()
+
     async def test_success_response_has_only_domain_fields(self) -> None:
         async with self.client() as client:
             response = await client.post(

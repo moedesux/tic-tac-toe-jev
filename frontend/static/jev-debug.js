@@ -4,6 +4,7 @@
     let selected = null;
     let unseen = 0;
     let selectionEvicted = false;
+    let submissionNumber = 0;
     const button = document.createElement('button');
     button.id = 'jev-debug-button';
     button.textContent = 'Debug';
@@ -100,7 +101,7 @@
         for (const exchange of exchanges) {
             const item = document.createElement('button');
             item.className = 'jev-exchange-entry';
-            item.textContent = `${exchange.request?.state?.natural_language_control || 'Player Command'} · ${exchange.status} · ${Math.round(exchange.duration_ms || 0)} ms`;
+            item.textContent = `${exchange.request?.state?.natural_language_control || exchange.label} · ${exchange.status} · ${Math.round(exchange.duration_ms || 0)} ms`;
             item.setAttribute('aria-pressed', String(exchange === selected));
             item.addEventListener('click', () => { selected = exchange; unseen = 0; selectionEvicted = false; render(); });
             list.append(item);
@@ -110,7 +111,7 @@
             line(detail, selectionEvicted ? 'Selected exchange was removed by the 50-exchange limit. Select a retained exchange.' : 'Submit a Player Command to inspect its Jev exchange.');
             return;
         }
-        line(detail, selected.request?.state?.natural_language_control || 'Player Command');
+        line(detail, selected.request?.state?.natural_language_control || selected.label);
         line(detail, `Jev: ${selected.status}`);
         if (selected.error) line(detail, `Provider error: ${selected.error.code}`);
         if (selected.application) {
@@ -130,14 +131,25 @@
         if (selected.request) payload(detail, 'Full request', selected.request);
         if (selected.response) payload(detail, 'Full response', selected.response);
         if (selected.error) payload(detail, 'Full failure', selected.error);
-        const {control, started, ...captured} = selected;
+        const {label, started, ...captured} = selected;
         payload(detail, 'Raw JSON', captured);
     }
 
     window.jevDebug = {
         begin(control) {
             if (enabled === false) return null;
-            const exchange = {control, status: 'pending', started: performance.now()};
+            submissionNumber++;
+            const exchange = {label: `Player Command ${submissionNumber}`, status: 'pending', started: performance.now()};
+            fetch('/api/debug/jev/label', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({control})
+            }).then(response => response.ok ? response.json() : null).then(data => {
+                if (exchanges.includes(exchange) && typeof data?.label === 'string') {
+                    exchange.label = data.label;
+                    render();
+                }
+            }).catch(() => {});
             exchanges.unshift(exchange);
             if (!selected && !selectionEvicted) selected = exchange;
             else unseen++;
