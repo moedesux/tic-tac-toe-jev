@@ -36,11 +36,16 @@ it whenever command acceptance criteria or test ownership changes.
 | Browser renders domain responses and passive TypeSafe health | `test_browser_controller_smoke` |
 | Standalone microphone and simulation transcripts share the backend command path; responses reach TTS and failures recover | `test/test_standalone_command.py`: `test_microphone_loop_transcribes_then_uses_shared_command_path`; `test_simulation_text_uses_same_path_for_clarification`; `test_backend_failure_is_reported_and_loop_can_continue`; `test_http_adapter_has_bounded_timeout_and_maps_connection_failure`; `test_adapter_matches_representative_real_backend_command_results` |
 | Retired command-interpreter runtime, configuration, dependencies, and provider-specific tests are absent | `test_retired_command_interpreter_artifacts_are_absent` |
+| Retained speech endpoints decode ASR input and return playable TTS WAV audio after runtime cleanup | `test_transcribe_decodes_audio_and_returns_trimmed_text`; `test_synthesize_returns_playable_mono_wav` |
 
 The test names above live in `test/test_player_command.py`,
 `test/test_jev_command_interpreter.py`, `test/test_game_session.py`,
-`test/test_game_command_api.py`, `test/test_browser_controller.py`, and
-`test/test_standalone_command.py`.
+`test/test_game_command_api.py`, `test/test_browser_controller.py`,
+`test/test_standalone_command.py`, and `test/test_speech_api.py`.
+
+Speech endpoint contract tests use fake speech engines and do not establish real
+model inference. Live ASR and TTS verification requires the retained local speech
+assets and their production dependencies.
 
 Live confidence calibration remains a separate migration criterion.
 

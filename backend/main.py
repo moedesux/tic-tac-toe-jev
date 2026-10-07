@@ -3,7 +3,7 @@ FastAPI application for Tic-Tac-Toe game.
 Provides REST API endpoints for single game operations.
 """
 
-import json
+import asyncio
 import logging
 import os
 import time
