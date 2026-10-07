@@ -103,6 +103,23 @@ speech health and synthesis requests are intercepted to avoid loading speech
 models. Real Jev service capture and browser verification without interception
 are separate credential-gated checks, recorded for the parent issue #15.
 
+
+## Jev failures and application outcomes, issue #17
+
+| Acceptance criterion | Passing deterministic coverage |
+| --- | --- |
+| Provider failure keeps HTTP status and error detail, includes duration and actual request with safe failure code | `test_failure_preserves_http_contract_and_originating_request` |
+| Reverse-order successful and failing submissions remain request-local; capture scope resets and disabled failure contract remains unchanged | `test_failure_preserves_http_contract_and_originating_request` |
+| Credential and Authorization strings in provider error bodies or request IDs cannot enter HTTP diagnostics or the panel | `test_failure_preserves_http_contract_and_originating_request`; `test_browser_distinguishes_application_outcomes_from_provider_failure` |
+| Jev success displays application rejection and clarification independently, with their returned messages | `test_browser_distinguishes_application_outcomes_from_provider_failure` |
+| Failed game refresh preserves already completed Jev success | `test_browser_distinguishes_application_outcomes_from_provider_failure` |
+| Rejected move preserves legacy `success=true` HTTP contract and authoritative board when capture is disabled | `test_rejected_move_retains_legacy_contract_without_capture` |
+
+The processor records an excluded domain application outcome because the legacy
+command success flag also reports successful processing of rejected moves. Debug
+responses expose that outcome without changing ordinary command JSON. Browser
+coverage drives real controls and command HTTP routes with a recording provider;
+speech requests and the intentional failed game refresh are external test seams.
 ## Jev payload explorer, issue #18
 
 | Acceptance criterion | Evidence |

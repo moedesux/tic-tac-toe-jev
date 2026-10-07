@@ -419,6 +419,7 @@ async function executeVoiceCommand(functionName, cmdArgs) {
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
+            window.jevDebug?.fail(debugEntry, error);
             throw new Error(readErrorDetail(error, response.status));
         }
 
