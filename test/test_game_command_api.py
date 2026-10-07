@@ -74,7 +74,7 @@ class GameCommandApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(exchange["status"], "success")
         self.assertEqual(exchange["request"]["state"], provider.calls[0]["state"])
         self.assertEqual(exchange["request"]["questions"]["intent"]["criteria"], provider.calls[0]["questions"]["intent"].criteria)
-        self.assertEqual(exchange["response"]["choices"]["position"]["probabilities"], {"center": .93, "no_match": .07})
+        self.assertEqual(exchange["response"]["answers"]["position"]["probabilities"], {"center": .93, "no_match": .07})
         self.assertEqual(exchange["application"]["intent"], "start_game")
         self.assertEqual(len(provider.calls), 1)
         self.assertEqual((await self.session.read()).board, [None] * 9)
