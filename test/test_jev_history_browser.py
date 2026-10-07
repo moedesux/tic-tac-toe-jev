@@ -53,6 +53,11 @@ def test_history_lifetime_selection_retention_and_layout():
         width.fill('600')
         width.dispatch_event('input')
         assert page.locator('#jev-debug-panel').bounding_box()['width'] == 600
+        page.set_viewport_size({'width': 1400, 'height': 1000})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        assert page.locator('.container').bounding_box()['x'] >= 0
+        page.set_viewport_size({'width': 1280, 'height': 1000})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.set_viewport_size({'width': 390, 'height': 844})
         panel_box = page.locator('#jev-debug-panel').bounding_box()
         game_box = page.locator('.container').bounding_box()
