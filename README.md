@@ -60,7 +60,7 @@ Microphone mode records audio between Enter presses, transcribes through local Q
 ./voice_game.sh stop
 ```
 
-The script manages one backend process using `.backend.pid`. `status` checks process liveness, not HTTP readiness. `start` returns before the server is ready. Backend output goes to `logs/backend.log`. Run commands from the root because configuration and model paths are relative to the working directory.
+The script manages one backend process using `.backend.pid`. `status` checks process liveness, not HTTP readiness. `start` waits for `/api/health` before reporting success, and `restart` waits for shutdown before launching the replacement. Startup and shutdown have a 30-second limit. A failed startup returns a nonzero exit code and points to `logs/backend.log`. An occupied port without a live tracked process also fails. The script leaves that server running; identify and stop it before retrying. Run commands from the root because configuration and model paths are relative to the working directory.
 
 `config/backend.conf` supplies the startup port, API title, and version. Startup binds `0.0.0.0`. `config/voice.conf` supplies speech paths, TTS enablement, voice settings, and the standalone backend URL. Keep its `api_gateway.base_url` aligned with the backend port. Some fields are reference settings rather than active options. The server ignores the configured host, and TTS returns its actual synthesis sample rate.
 
@@ -101,3 +101,46 @@ For final live verification, drive the running browser through a Structured Cont
 The [architecture explanation](docs/jev-migration-plan.md) describes module ownership. The editable [diagram](architecture.drawio) and its rendered image show both entry points.
 
 ![Jev command architecture](assets/architecture.png)
+
+### Jev exchange debugging
+
+Set `JEV_DEBUG=true` in the backend environment and restart the server to enable
+request and response capture. Open **Debug** on either game page to inspect
+Natural-Language Controls. Capture continues while the panel is closed. The
+setting defaults to disabled; command responses then keep their existing domain
+fields. Structured Controls do not call Jev or create exchanges. Credentials and
+transport headers are excluded from diagnostic data.
+
+To create an exchange, type a command such as `start a game` and choose **Send**
+or press Enter, or use a spoken command. **Start Game**, board cells, and position
+buttons apply game actions directly and leave Jev history empty. **TYPESAFE:
+UNVERIFIED** means the provider is configured but has not handled a Jev request
+yet. After a successful request, the badge updates on its next health poll.
+
+From the repository root, run this command to enable capture for the restarted
+backend while loading other settings from `.env`:
+
+```bash
+JEV_DEBUG=true uv run --env-file .env ./voice_game.sh restart
+curl --fail http://localhost:8002/api/debug/jev
+```
+
+The capability response must report `"enabled": true`. Refresh the game page
+after the restart. To keep capture enabled across later restarts, add
+`JEV_DEBUG=true` to `.env` and load it with
+`uv run --env-file .env ./voice_game.sh restart`. The script inherits its caller's
+environment and does not load `.env` itself.
+
+The Debug panel keeps the latest 50 exchanges in this tab's memory, including
+commands submitted while it is closed. New games preserve history. Refreshing
+starts fresh, and **Clear history** removes entries and selection immediately,
+including pending requests whose later responses cannot restore them. New entries
+preserve the inspected exchange. Click the new-exchange indicator to inspect the
+latest entry. If retention removes the inspected exchange, the panel asks you to
+select a retained entry.
+
+At widths of 1400 pixels or more, the panel sits beside the game. Use **Panel
+width** to adjust it between 400 and 700 pixels. At smaller widths it sits below
+the game, with separate scrolling for history and details. Each tab captures only commands submitted from that tab. Each tab has its own
+history while all tabs connected to one backend share the game and Pending
+Command state. History is neither persisted nor synchronized across tabs.

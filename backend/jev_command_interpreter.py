@@ -27,6 +27,7 @@ from typesafe_sdk import (
     TypeSafeUnprocessableEntityError,
 )
 
+from backend.jev_diagnostics import current_exchange, sanitize
 from backend.models import CommandIntent, GameResponse, MovePosition, PendingCommand
 from backend.player_command import CommandInterpretation
 from backend.typesafe_health import TypeSafeFailureKind, TypeSafeOperationalError
@@ -172,6 +173,12 @@ class JevCommandInterpreter:
                     ),
                 }
             )
+        exchange = current_exchange()
+        if exchange is not None:
+            exchange.request = sanitize({
+                "state": state,
+                "questions": {name: _diagnostic_json(question) for name, question in questions.items()},
+            })
         try:
             response = await self._client.system_one(
                 state=state,
@@ -179,6 +186,8 @@ class JevCommandInterpreter:
             )
         except TypeSafeError as error:
             raise _translate_typesafe_error(error) from error
+        if exchange is not None:
+            exchange.response = sanitize(_diagnostic_json(response))
         self.last_model = getattr(response, "model", None)
         usage = getattr(response, "usage", None)
         self.last_usage = (
@@ -292,6 +301,10 @@ class MissingConfigurationInterpreter:
 def _translate_typesafe_error(error: TypeSafeError) -> TypeSafeOperationalError:
     """Keep SDK exceptions and provider response bodies inside this adapter."""
     request_id = getattr(error, "request_id", None)
+    if isinstance(request_id, str):
+        request_id = sanitize(request_id)
+        if "authorization" in request_id.lower() or "bearer" in request_id.lower():
+            request_id = "[redacted]"
     if isinstance(error, (TypeSafeAuthenticationError, TypeSafePermissionDeniedError)):
         kind = TypeSafeFailureKind.AUTHENTICATION
     elif isinstance(error, TypeSafeRateLimitError):
@@ -321,3 +334,13 @@ async def open_jev_command_interpreter() -> AsyncIterator[JevCommandInterpreter]
         model=os.getenv("TYPESAFE_DEFAULT_MODEL", "jev-1.13.0"),
     ) as client:
         yield JevCommandInterpreter(client)
+
+
+def _diagnostic_json(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return {key: _diagnostic_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_diagnostic_json(item) for item in value]
+    return value

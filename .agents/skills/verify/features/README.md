@@ -5,6 +5,7 @@ Start with a new isolated backend and doctor from [verify](../SKILL.md). Each pr
 - [Structured gameplay](structured-game.md) covers starting, alternating turns, invalid moves, wins, draws, and restart.
 - [Natural-Language Controls](player-commands.md) covers typed commands and Pending Commands.
 - [Inspection and departure](inspection-departure.md) covers board, status, and Quit.
+- [Jev exchange debugging](jev-debug.md) covers capture configuration, typed commands, Structured Controls, and tab-local history.
 - [Speech and standalone client](speech.md) covers browser microphone, audible responses, and standalone simulation.
 
 Use stable selectors and production endpoints. Capture browser actions, resulting DOM, and GET `/api/game` for game mutations. Capture response bodies for commands and speech errors. Keep evidence after cleanup. A proof of one entry point does not cover the others. The initial helper proves `structured-win` through `/regular_game.html`.
