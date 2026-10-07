@@ -75,6 +75,8 @@ Issue #12 also requires evidence beyond deterministic command contracts.
 | Active documentation uses the glossary and describes both entry points, Structured Controls, and local speech | Review `README.md` and `docs/jev-migration-plan.md` against `CONTEXT.md` and executable entry points |
 | Setup uses server-side credentials and the validated model | Compare setup instructions with application lifespan and `open_jev_command_interpreter`; live evaluation reports `jev-1.13.0` |
 | Operations and troubleshooting match executable behavior | Compare commands with `voice_game.sh`, `download_models.sh`, configuration accessors, CLI help, health routes, and `FAILURE_MAPPINGS` |
+| Backend startup rejects an unmanaged occupied port and a failed server without reporting success or retaining a PID file | `test_start_rejects_unmanaged_listener`; `test_start_reports_server_exit` |
+| Backend restart waits for shutdown and HTTP readiness and applies the new environment | `test_restart_waits_for_shutdown_and_new_environment` |
 | Editable and rendered architecture show command ownership and Pending Command | Run `scripts/render_architecture.py` and inspect `assets/architecture.png` |
 | Tracked and ignored project artifacts contain no retired runtime | Run `scripts/audit_hard_cutover.py --root "$PWD"` on every active worktree; `test_retired_command_interpreter_artifacts_are_absent` |
 | Only the accepted decision record names retired technologies in project-owned text | Same audit, with the explicit dependency and binary scope described in the architecture explanation |
