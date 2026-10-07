@@ -3,6 +3,12 @@
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
+from pydantic import ConfigDict
+from typesafe_sdk import SystemOneResponse
+
+
+class RecordingResponse(SystemOneResponse):
+    model_config = ConfigDict(extra="allow", frozen=False)
 
 from backend.jev_command_interpreter import JevCommandInterpreter
 from backend.models import CommandIntent, GameResponse, MovePosition, PendingCommand
@@ -36,28 +42,19 @@ class RecordingTypeSafeClient:
 
     async def system_one(self, *, state: dict, questions: dict):
         self.calls.append({"state": state, "questions": questions})
-        return SimpleNamespace(
-            choices={
-                "intent": SimpleNamespace(choice=self.intent, confidence=0.93),
-                "position": SimpleNamespace(
-                    choice=self.position,
-                    confidence=0.93,
-                    probabilities=self.position_probabilities,
-                ),
-            },
-            nouls={
-                "position_present": SimpleNamespace(noul=self.presence),
-                "position_unique": SimpleNamespace(noul=self.uniqueness),
-                "initial_move_requested": SimpleNamespace(
-                    noul=self.initial_move_requested_confidence
-                ),
-                "state_change_requested": SimpleNamespace(
-                    noul=self.state_change_confidence
-                ),
-                **{
-                    name: SimpleNamespace(noul=confidence)
-                    for name, confidence in self.pending_judgments.items()
-                },
+        return RecordingResponse(
+            model="jev-recording",
+            usage={"input_tokens": 10, "output_tokens": 5},
+            answers={
+                "intent": {"type": "choice", "choice": self.intent, "confidence": .93, "probabilities": {self.intent: .93, "unclear": .07}},
+                "position": {"type": "choice", "choice": self.position, "confidence": .93, "probabilities": self.position_probabilities},
+                **{name: {"type": "noul", "noul": confidence} for name, confidence in {
+                    "position_present": self.presence,
+                    "position_unique": self.uniqueness,
+                    "initial_move_requested": self.initial_move_requested_confidence,
+                    "state_change_requested": self.state_change_confidence,
+                    **self.pending_judgments,
+                }.items()},
             },
         )
 

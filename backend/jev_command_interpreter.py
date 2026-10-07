@@ -339,6 +339,4 @@ def _diagnostic_json(value: Any) -> Any:
         return {key: _diagnostic_json(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_diagnostic_json(item) for item in value]
-    if hasattr(value, "__dict__"):
-        return _diagnostic_json(vars(value))
     return value
