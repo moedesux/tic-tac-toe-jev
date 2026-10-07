@@ -567,3 +567,12 @@ h1 {
     0% { opacity: 0.2; }
     50%, 100% { opacity: 1; }
 }
+#jev-debug-button { position: fixed; top: 1rem; right: 1rem; z-index: 10; }
+#jev-debug-panel { padding: 1rem; background: #fff; color: #252525; border: 1px solid #aaa; border-radius: 10px; width: min(700px, 95vw); max-width: 100%; box-sizing: border-box; }
+#jev-debug-panel[hidden] { display: none; }
+.jev-explorer { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr); gap: 1rem; }
+.jev-exchange-entry { display: block; width: 100%; margin-bottom: .5rem; overflow-wrap: anywhere; text-align: left; }
+.jev-exchange-entry[aria-pressed="true"] { outline: 2px solid #3e76ad; }
+.jev-exchange-detail { min-width: 0; overflow-wrap: anywhere; }
+.jev-exchange-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 400px; overflow: auto; }
+@media (max-width: 600px) { .jev-explorer { grid-template-columns: 1fr; } }

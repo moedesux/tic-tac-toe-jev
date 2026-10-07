@@ -398,6 +398,7 @@ async function executeVoiceCommand(functionName, cmdArgs) {
         return;
     }
     
+    const debugEntry = window.jevDebug?.begin(textToSend);
     try {
         console.log('[Voice] Sending command to domain API:', textToSend);
         showThinkingIndicator();
@@ -422,6 +423,7 @@ async function executeVoiceCommand(functionName, cmdArgs) {
         }
 
         const data = await response.json();
+        window.jevDebug?.complete(debugEntry, data);
         console.log('[Voice] API response:', JSON.stringify(data));
 
         hideThinkingIndicator();
@@ -444,6 +446,7 @@ async function executeVoiceCommand(functionName, cmdArgs) {
             }
         }
     } catch (error) {
+        window.jevDebug?.fail(debugEntry);
         console.error('[Voice] Fetch error:', error);
         hideThinkingIndicator();
         addVoiceMessage("bot", "Error: " + error.message);
