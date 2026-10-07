@@ -3,6 +3,7 @@ Pydantic models for API requests and responses.
 """
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -101,6 +102,9 @@ class PlayerCommandRequest(BaseModel):
 class CommandResult(BaseModel):
     """Provider-neutral result of processing a Player Command."""
 
+    application_outcome: Literal["accepted", "rejected", "clarification"] = Field(
+        default="accepted", exclude=True
+    )
     success: bool
     message: str
     intent: CommandIntent

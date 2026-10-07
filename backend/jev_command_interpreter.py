@@ -301,6 +301,10 @@ class MissingConfigurationInterpreter:
 def _translate_typesafe_error(error: TypeSafeError) -> TypeSafeOperationalError:
     """Keep SDK exceptions and provider response bodies inside this adapter."""
     request_id = getattr(error, "request_id", None)
+    if isinstance(request_id, str):
+        request_id = sanitize(request_id)
+        if "authorization" in request_id.lower() or "bearer" in request_id.lower():
+            request_id = "[redacted]"
     if isinstance(error, (TypeSafeAuthenticationError, TypeSafePermissionDeniedError)):
         kind = TypeSafeFailureKind.AUTHENTICATION
     elif isinstance(error, TypeSafeRateLimitError):

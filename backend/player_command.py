@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from backend.game_session import GameSession, InvalidMoveError, NoGameError
 from backend.models import (
@@ -253,6 +253,7 @@ class PlayerCommandProcessor:
                 result_intent,
                 confidence,
                 str(error),
+                outcome="rejected",
                 position=position,
                 pending=None,
             )
@@ -270,11 +271,13 @@ class PlayerCommandProcessor:
         message: str,
         *,
         clarification: bool = False,
+        outcome: Literal["accepted", "rejected", "clarification"] = "accepted",
         position: MovePosition | None = None,
         pending: PendingCommand | None = None,
     ) -> CommandResult:
         return CommandResult(
             success=True,
+            application_outcome="clarification" if clarification else outcome,
             message=message,
             intent=intent,
             position=position,
